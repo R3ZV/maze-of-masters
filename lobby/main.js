@@ -272,7 +272,7 @@ class Game {
     handleInteraction() {
         if (!this.hoveredNPC) return;
 
-        if (this.hoveredNPC.id === 'A') window.location.href = '/mini-games/dragon-lair';
+        if (this.hoveredNPC.id === 'A') window.location.href = '/mini-games/dragon';
         if (this.hoveredNPC.id === 'B') window.location.href = '/mini-games/cards';
     }
 
