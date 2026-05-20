@@ -1,0 +1,24 @@
+{
+  "name": "maze-of-masters",
+  "version": "1.0.0",
+  "description": "We first server the project via `python3 -m http.server` on the root project directory (it will serv on port `8000`).",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/R3ZV/maze-of-masters.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/R3ZV/maze-of-masters/issues"
+  },
+  "homepage": "https://github.com/R3ZV/maze-of-masters#readme",
+  "dependencies": {
+    "@webpd/runtime": "0.1.2"
+  }
+}
