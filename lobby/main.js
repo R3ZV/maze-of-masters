@@ -275,6 +275,7 @@ class Game {
         if (this.hoveredNPC.id === 'A') window.location.href = '/mini-games/dragon';
         if (this.hoveredNPC.id === 'B') window.location.href = '/mini-games/cards';
         if (this.hoveredNPC.id === 'C') window.location.href = '/mini-games/signals';
+        if (this.hoveredNPC.id === 'D') window.location.href = '/mini-games/space';
     }
 
     tick() {
