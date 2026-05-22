@@ -8,8 +8,8 @@ import {
 
 class UIManager {
     constructor() {
-        this.loseScreen = this.createOverlay('#220000', '#FF4444', 'OUT OF LIVES.<br>Redirecting to lobby...');
-        this.winScreen = this.createOverlay('#002200', '#44FF44', 'YOU WIN!<br>Redirecting to lobby...');
+        this.loseScreen = this.createOverlay('#220000', '#FF4444', 'OUT OF LIVES.<br><div style="font-size:.9rem;color:#aaa;margin-top:32px;letter-spacing:.15em">PRESS <span style="color:#fff">R</span> TO RETRY &nbsp;·&nbsp; <span style="color:#fff">L</span> FOR LOBBY</div>');
+        this.winScreen  = this.createOverlay('#002200', '#44FF44', 'YOU WIN!<br><div style="font-size:.9rem;color:#aaa;margin-top:32px;letter-spacing:.15em">PRESS <span style="color:#fff">R</span> TO RETRY &nbsp;·&nbsp; <span style="color:#fff">L</span> FOR LOBBY</div>');
         this.hud = document.createElement('div');
         this.hud.style.position = 'absolute';
         this.hud.style.top = '20px'; this.hud.style.width = '100vw';
@@ -35,8 +35,9 @@ class UIManager {
         div.style.top = '0'; div.style.left = '0';
         div.style.width = '100vw'; div.style.height = '100vh';
         div.style.backgroundColor = bgColor; div.style.color = textColor;
-        div.style.display = 'none'; div.style.alignItems = 'center';
-        div.style.justifyContent = 'center'; div.style.fontSize = '3rem';
+        div.style.display = 'none'; div.style.flexDirection = 'column';
+        div.style.alignItems = 'center'; div.style.justifyContent = 'center';
+        div.style.fontSize = '3rem';
         div.style.fontFamily = 'Arial, sans-serif'; div.style.textAlign = 'center';
         div.innerHTML = text;
         document.body.appendChild(div);
@@ -136,6 +137,12 @@ class Game {
         window.addEventListener('mousedown', () => this.handleInteraction());
         window.addEventListener('keydown', (e) => {
             if (e.key.toLowerCase() === 'e') this.handleInteraction();
+        });
+
+        window.addEventListener('keydown', e => {
+            const k = e.key.toLowerCase();
+            if (k === 'r' && (this.state === 'LOST' || this.state === 'WON')) this.restart();
+            if (k === 'l' && (this.state === 'LOST' || this.state === 'WON')) window.location.href = '/lobby';
         });
 
         this.startRound();
@@ -333,9 +340,9 @@ class Game {
         this.roundIndex++;
 
         if (this.roundIndex >= ROUND_CONFIGS.length) {
+            this.state = 'WON';
             this.controls.unlock();
             this.ui.showWin();
-            setTimeout(() => { window.location.href = '/lobby'; }, 3000);
             return;
         }
 
@@ -349,9 +356,18 @@ class Game {
         this.controls.unlock();
         this.playSound('fail', 'sad_horn.wav');
         this.ui.showLose();
-        setTimeout(() => {
-            window.location.href = '/lobby';
-        }, 3000);
+    }
+
+    restart() {
+        this.ui.loseScreen.style.display = 'none';
+        this.ui.winScreen.style.display  = 'none';
+        this.ui.hud.style.display        = '';
+        this.ui.crosshair.style.display  = '';
+        this.roundIndex  = 0;
+        const shuffle    = arr => [...arr].sort(() => Math.random() - 0.5);
+        this.startSounds = shuffle(START_OF_ROUND_SOUNDS);
+        this.endSounds   = shuffle(END_OF_ROUND_SOUNDS);
+        this.startRound();
     }
 
     tick() {

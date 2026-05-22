@@ -15,10 +15,11 @@ const SCROLL_SENSITIVITY = 1; // how many units one scroll tick moves the dial
 // ─────────────────────────────────────────────
 class UIManager {
     constructor() {
+        const hint = '<div style="font-size:.9rem;color:#aaa;margin-top:32px;letter-spacing:.15em">PRESS <span style="color:#fff">R</span> TO RETRY &nbsp;·&nbsp; <span style="color:#fff">L</span> FOR LOBBY</div>';
         this.winScreen  = this._overlay('#000', '#50C878',
-            'All radios tuned!<br>The music plays on.');
+            'All radios tuned!<br>The music plays on.' + hint);
         this.loseScreen = this._overlay('#1a0000', '#FF4444',
-            'Time\'s up!<br>The static wins.');
+            'Time\'s up!<br>The static wins.' + hint);
 
         this.hud = document.createElement('div');
         Object.assign(this.hud.style, {
@@ -59,6 +60,7 @@ class UIManager {
             position: 'absolute', top: '0', left: '0',
             width: '100vw', height: '100vh',
             backgroundColor: bg, color, display: 'none',
+            flexDirection: 'column',
             alignItems: 'center', justifyContent: 'center',
             fontSize: '3rem', fontFamily: 'Arial, sans-serif',
             textAlign: 'center'
@@ -834,11 +836,15 @@ class Game {
     endGame(result) {
         this.state = result;
         this.controls.unlock();
-        this.renderer.setAnimationLoop(null);
-        this.renderer.domElement.style.display = 'none';
         this.radios.forEach(r => r.stopAudio());
         if (result === 'WON')  this.ui.showWin();
         if (result === 'LOST') this.ui.showLose();
+
+        window.addEventListener('keydown', e => {
+            const k = e.key.toLowerCase();
+            if (k === 'r') window.location.reload();
+            if (k === 'l') window.location.href = '/lobby';
+        }, { once: false });
     }
 
     checkCollision(pos, radius) {

@@ -3,7 +3,7 @@ import { PointerLockControls } from 'three/addons/controls/PointerLockControls.j
 
 class UIManager {
     constructor() {
-        this.loseScreen = this.createOverlay('#220000', '#FF4444', 'CUSTOMER LEFT ANGRY.<span style="font-size:1.5rem">Redirecting to lobby...</span>');
+        this.loseScreen = this.createOverlay('#220000', '#FF4444', 'CUSTOMER LEFT ANGRY.<div style="font-size:.9rem;color:#aaa;margin-top:32px;letter-spacing:.15em">PRESS <span style="color:#fff">R</span> TO RETRY &nbsp;·&nbsp; <span style="color:#fff">L</span> FOR LOBBY</div>');
         this.transitionScreen = this.createOverlay('#111111', '#FFFFFF', '');
 
         this.hud = document.createElement('div');
@@ -175,6 +175,12 @@ class Game {
         window.addEventListener('mousedown', () => this.handleInteraction());
 
         this.startLevel();
+        window.addEventListener('keydown', e => {
+            const k = e.key.toLowerCase();
+            if (k === 'r' && this.state === 'LOST') this.restart();
+            if (k === 'l' && this.state === 'LOST') window.location.href = '/lobby';
+        });
+
         this.renderer.setAnimationLoop(() => this.tick());
     }
 
@@ -380,10 +386,14 @@ class Game {
         this.controls.unlock();
         if (this.customerGroup) this.scene.remove(this.customerGroup);
         this.ui.showLose();
+    }
 
-        setTimeout(() => {
-            window.location.href = '../../lobby/index.html';
-        }, 3000);
+    restart() {
+        this.ui.loseScreen.style.display = 'none';
+        this.ui.hud.style.display        = 'block';
+        this.ui.crosshair.style.display  = 'block';
+        this.currentLevel = 1;
+        this.startLevel();
     }
 
     triggerWin() {
