@@ -1,9 +1,10 @@
 import * as THREE from 'three';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 class UIManager {
     constructor() {
-        this.loseScreen = this.createOverlay('#220000', '#FF4444', 'CUSTOMER LEFT ANGRY.<div style="font-size:.9rem;color:#aaa;margin-top:32px;letter-spacing:.15em">PRESS <span style="color:#fff">R</span> TO RETRY &nbsp;·&nbsp; <span style="color:#fff">L</span> FOR LOBBY</div>');
+        this.loseScreen = this.createOverlay('#220000', '#FF4444', 'CUSTOMER LEFT ANGRY.<br><span style="font-size:1.5rem; margin-top:20px;">Press L to go to Lobby or R to Replay</span>');
         this.transitionScreen = this.createOverlay('#111111', '#FFFFFF', '');
 
         this.hud = document.createElement('div');
@@ -87,29 +88,32 @@ class UIManager {
         this.crosshair.style.display = 'none'; 
         this.loseScreen.style.display = 'flex'; 
     }
+
+    hideLose() {
+        this.hud.style.display = 'block'; 
+        this.crosshair.style.display = 'block'; 
+        this.loseScreen.style.display = 'none'; 
+    }
 }
 
 class ShopItem {
-    constructor(id, name, geometry, colorHex, x, z) {
+    constructor(id, name, normalizedGroup, x, z) {
         this.id = id;
         this.name = name;
 
-        this.material = new THREE.MeshStandardMaterial({ 
-            color: colorHex,
-            emissive: 0xffffff,
-            emissiveIntensity: 0
-        });
-        this.mesh = new THREE.Mesh(geometry, this.material);
+        this.mesh = normalizedGroup;
 
-        if (id === 'coffee' || id === 'pretzel') {
-            this.mesh.rotation.x = Math.PI / 2;
-        } else if (id === 'pauldog') {
-            this.mesh.rotation.z = Math.PI / 2;
-        }
-
-        const baseY = 1.15; 
+        const baseY = 1.1; 
         this.mesh.position.set(x, baseY, z); 
-        this.mesh.userData = { isItem: true, id: this.id };
+
+        this.mesh.traverse(child => {
+            if (child.isMesh) {
+                child.userData = { isItem: true, id: this.id };
+                if (child.material) {
+                    child.material = child.material.clone();
+                }
+            }
+        });
 
         this.targetEmissive = 0;
     }
@@ -119,7 +123,11 @@ class ShopItem {
     }
 
     update(dt) {
-        this.material.emissiveIntensity += (this.targetEmissive - this.material.emissiveIntensity) * 15 * dt;
+        this.mesh.traverse(child => {
+            if (child.isMesh && child.material && child.material.emissiveIntensity !== undefined) {
+                child.material.emissiveIntensity += (this.targetEmissive - child.material.emissiveIntensity) * 15 * dt;
+            }
+        });
     }
 }
 
@@ -138,6 +146,9 @@ class Game {
 
         this.hoveredItem = null;
         this.stallTimer = 0; 
+
+        this.models = {};
+        this.sounds = {};
 
         this.quotes = [
             "scopul nostru este sa nu va pregatim pt viata reala",
@@ -169,19 +180,113 @@ class Game {
 
         this.initRenderer();
         this.initScene();
-        this.buildShopEnvironment();
-        this.buildInteractables();
 
-        window.addEventListener('mousedown', () => this.handleInteraction());
+        Promise.all([this.loadModels(), this.loadAudio()]).then(() => {
+            this.buildShopEnvironment();
+            this.buildInteractables();
 
-        this.startLevel();
-        window.addEventListener('keydown', e => {
-            const k = e.key.toLowerCase();
-            if (k === 'r' && this.state === 'LOST') this.restart();
-            if (k === 'l' && this.state === 'LOST') window.location.href = '/lobby';
+            window.addEventListener('mousedown', () => this.handleInteraction());
+            this.setupKeys();
+
+            this.startLevel();
+            this.renderer.setAnimationLoop(() => this.tick());
         });
+    }
 
-        this.renderer.setAnimationLoop(() => this.tick());
+    async loadModels() {
+        const loader = new GLTFLoader();
+        const modelNames = ['burger', 'counter', 'npc', 'pizza', 'soda'];
+
+        await Promise.all(modelNames.map(name => {
+            return new Promise((resolve, reject) => {
+                loader.load(
+                    `assets/${name}.glb`,
+                    (gltf) => {
+                        this.models[name] = gltf.scene;
+                        resolve();
+                    },
+                    undefined,
+                    (error) => {
+                        console.error(`Failed to load ${name}.glb`, error);
+                        reject(error);
+                    }
+                );
+            });
+        }));
+    }
+
+    async loadAudio() {
+        const audioLoader = new THREE.AudioLoader();
+        const soundNames = ['click', 'door', 'mumble'];
+
+        await Promise.all(soundNames.map(name => {
+            return new Promise((resolve) => {
+                audioLoader.load(
+                    `assets/${name}.wav`,
+                    (buffer) => {
+                        const sound = new THREE.Audio(this.audioListener);
+                        sound.setBuffer(buffer);
+                        sound.setVolume(0.5);
+                        this.sounds[name] = sound;
+                        resolve();
+                    },
+                    undefined,
+                    (error) => {
+                        console.error(`Failed to load ${name}.wav`, error);
+                        resolve();
+                    }
+                );
+            });
+        }));
+    }
+
+    normalizeModel(model, targetSize, normalizeBy = 'max') {
+        const wrapper = new THREE.Group();
+        const clone = model.clone();
+
+        clone.updateMatrixWorld(true);
+
+        const box = new THREE.Box3().setFromObject(clone);
+        const size = new THREE.Vector3();
+        box.getSize(size);
+
+        let scale = 1;
+        if (normalizeBy === 'height') {
+            scale = size.y > 0 ? (targetSize / size.y) : 1;
+        } else {
+            const maxDim = Math.max(size.x, size.y, size.z);
+            scale = maxDim > 0 ? (targetSize / maxDim) : 1;
+        }
+
+        clone.scale.setScalar(scale);
+        clone.updateMatrixWorld(true);
+
+        const scaledBox = new THREE.Box3().setFromObject(clone);
+        const scaledCenter = new THREE.Vector3();
+        scaledBox.getCenter(scaledCenter);
+
+        clone.position.x = -scaledCenter.x;
+        clone.position.y = -scaledBox.min.y;
+        clone.position.z = -scaledCenter.z;
+
+        wrapper.add(clone);
+        return wrapper;
+    }
+
+    setupKeys() {
+        window.addEventListener('keydown', (e) => {
+            if (this.state === 'LOST') {
+                const key = e.key.toLowerCase();
+                if (key === 'l') {
+                    window.location.href = '/lobby';
+                } else if (key === 'r') {
+                    this.ui.hideLose();
+                    if (this.customerGroup) this.scene.remove(this.customerGroup);
+                    this.currentLevel = 1;
+                    this.startLevel();
+                }
+            }
+        });
     }
 
     initRenderer() {
@@ -198,13 +303,16 @@ class Game {
 
     initScene() {
         this.scene = new THREE.Scene();
-        this.scene.background = new THREE.Color(0x2a1a10); 
+        this.scene.background = new THREE.Color(0x000000); 
         this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 100);
 
-        const ambientLight = new THREE.AmbientLight(0xffeedd, 0.7);
+        this.audioListener = new THREE.AudioListener();
+        this.camera.add(this.audioListener);
+
+        const ambientLight = new THREE.AmbientLight(0xffeedd, 0.9);
         this.scene.add(ambientLight);
 
-        const pointLight = new THREE.PointLight(0xffbb88, 1.2);
+        const pointLight = new THREE.PointLight(0xffbb88, 1.5);
         pointLight.position.set(0, 3, -1);
         this.scene.add(pointLight);
 
@@ -215,23 +323,71 @@ class Game {
 
         this.controls = new PointerLockControls(this.camera, document.body);
         document.body.addEventListener('click', () => {
-            if (this.state === 'PLAYING') this.controls.lock();
+            if (this.state === 'PLAYING') {
+                this.controls.lock();
+                if (this.audioListener.context.state === 'suspended') {
+                    this.audioListener.context.resume();
+                }
+            }
         });
         this.raycaster = new THREE.Raycaster();
     }
 
     buildShopEnvironment() {
+        const canvas = document.createElement('canvas');
+        canvas.width = 128; canvas.height = 128;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, 128, 128); 
+        ctx.fillStyle = '#111111'; 
+        ctx.fillRect(0, 0, 64, 64); 
+        ctx.fillRect(64, 64, 64, 64); 
+
+        const floorTex = new THREE.CanvasTexture(canvas);
+        floorTex.wrapS = THREE.RepeatWrapping;
+        floorTex.wrapT = THREE.RepeatWrapping;
+        floorTex.repeat.set(10, 10); 
+        floorTex.magFilter = THREE.NearestFilter; 
+
         const floorGeo = new THREE.PlaneGeometry(20, 20);
-        const floorMat = new THREE.MeshStandardMaterial({ color: 0x5c4033 });
+        const floorMat = new THREE.MeshStandardMaterial({ map: floorTex });
         const floor = new THREE.Mesh(floorGeo, floorMat);
         floor.rotation.x = -Math.PI / 2;
         this.scene.add(floor);
 
-        const counterGeo = new THREE.BoxGeometry(6, 1.1, 1.5);
-        const counterMat = new THREE.MeshStandardMaterial({ color: 0x8b5a2b });
-        const counter = new THREE.Mesh(counterGeo, counterMat);
-        counter.position.set(0, 0.55, -0.8);
-        this.scene.add(counter);
+        const wallMat = new THREE.MeshStandardMaterial({ color: 0x333333 }); 
+        const backWall = new THREE.Mesh(new THREE.PlaneGeometry(20, 10), wallMat);
+        backWall.position.set(0, 5, -10);
+        this.scene.add(backWall);
+
+        const leftWall = new THREE.Mesh(new THREE.PlaneGeometry(20, 10), wallMat);
+        leftWall.rotation.y = Math.PI / 2;
+        leftWall.position.set(-10, 5, 0);
+        this.scene.add(leftWall);
+
+        const rightWall = new THREE.Mesh(new THREE.PlaneGeometry(20, 10), wallMat);
+        rightWall.rotation.y = -Math.PI / 2;
+        rightWall.position.set(10, 5, 0);
+        this.scene.add(rightWall);
+
+        const frontWall = new THREE.Mesh(new THREE.PlaneGeometry(20, 10), wallMat);
+        frontWall.rotation.y = Math.PI;
+        frontWall.position.set(0, 5, 10);
+        this.scene.add(frontWall);
+
+        const doorMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a });
+        const door = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 2.5), doorMat);
+        door.position.set(0, 1.25, -9.9); 
+        this.scene.add(door);
+
+        const ceilingMat = new THREE.MeshStandardMaterial({ color: 0xffffff });
+        const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(20, 20), ceilingMat);
+        ceiling.rotation.x = Math.PI / 2;
+        ceiling.position.set(0, 10, 0); 
+        this.scene.add(ceiling);
+
+        const counterWrapper = this.normalizeModel(this.models.counter, 3.0); 
+        counterWrapper.position.set(0, 0, -1.2); 
+        this.scene.add(counterWrapper);
 
         const shelfGeo = new THREE.BoxGeometry(5, 0.1, 0.6);
         const shelfMat = new THREE.MeshStandardMaterial({ color: 0x4a3b2c });
@@ -239,12 +395,11 @@ class Game {
         shelf.position.set(0, 2.0, -2.5);
         this.scene.add(shelf);
 
-        const decPretzelGeo = new THREE.TorusGeometry(0.2, 0.05, 8, 24);
-        const decPretzelMat = new THREE.MeshStandardMaterial({ color: 0xd84315 });
         for(let i = -2; i <= 2; i += 1) {
-            const dp = new THREE.Mesh(decPretzelGeo, decPretzelMat);
-            dp.position.set(i, 2.25, -2.5);
-            this.scene.add(dp);
+            const decPizza = this.normalizeModel(this.models.pizza, 0.3);
+            decPizza.position.set(i, 2.05, -2.5);
+            decPizza.children[0].rotation.x = Math.PI / 4; 
+            this.scene.add(decPizza);
         }
 
         const signCanvas = document.createElement('canvas');
@@ -266,11 +421,11 @@ class Game {
     }
 
     buildInteractables() {
-        const coffee = new ShopItem('coffee', 'Coffee', new THREE.CylinderGeometry(0.12, 0.12, 0.25, 16), 0x3e2723, -0.6, -0.7);
-        const pretzel = new ShopItem('pretzel', 'Pretzel', new THREE.TorusGeometry(0.15, 0.04, 8, 24), 0xd84315, 0, -0.7);
-        const pauldog = new ShopItem('pauldog', 'Pauldog', new THREE.CylinderGeometry(0.06, 0.06, 0.4, 16), 0x8d6e63, 0.6, -0.7);
+        const burger = new ShopItem('burger', 'Burger', this.normalizeModel(this.models.burger, 0.35), -0.6, -0.7);
+        const pizza = new ShopItem('pizza', 'Pizza', this.normalizeModel(this.models.pizza, 0.45), 0, -0.7);
+        const soda = new ShopItem('soda', 'Soda', this.normalizeModel(this.models.soda, 0.25, 'height'), 0.6, -0.7);
 
-        this.items.push(coffee, pretzel, pauldog);
+        this.items.push(burger, pizza, soda);
         this.items.forEach(item => this.scene.add(item.mesh));
     }
 
@@ -302,7 +457,7 @@ class Game {
         const tex = new THREE.CanvasTexture(canvas);
         const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex }));
         sprite.scale.set(1.5, 0.75, 1);
-        sprite.position.set(0, 1.8, 0); 
+        sprite.position.set(0, 2.0, 0); 
         return sprite;
     }
 
@@ -312,30 +467,40 @@ class Game {
             return;
         }
 
-        const currentCustomer = this.queue[0];
+        if (this.sounds.door) {
+            if (this.sounds.door.isPlaying) this.sounds.door.stop();
+            this.sounds.door.play();
+        }
 
-        this.customerGroup = new THREE.Group();
-        this.customerGroup.position.set(0, 0, -8); 
+        this.customerState = 'DOOR_OPENING';
+        setTimeout(() => {
+            if (this.state !== 'PLAYING') return; 
 
-        const bodyMat = new THREE.MeshStandardMaterial({ color: currentCustomer.colorHex });
-        const bodyMesh = new THREE.Mesh(new THREE.BoxGeometry(0.9, 1.6, 0.9), bodyMat);
-        bodyMesh.position.y = 0.8;
-        this.customerGroup.add(bodyMesh);
+            const currentCustomer = this.queue[0];
+            this.customerGroup = new THREE.Group();
+            this.customerGroup.position.set(0, 0, -10); 
 
-        this.requestSprite = this.createSpeechBubble(currentCustomer.wants);
-        this.requestSprite.visible = false; 
-        this.customerGroup.add(this.requestSprite);
+            const targetHeight = 1.6;
+            const npcMesh = this.normalizeModel(this.models['npc'], targetHeight, 'height');
+            this.customerGroup.add(npcMesh);
 
-        this.scene.add(this.customerGroup);
-        this.customerState = 'APPROACHING';
+            this.requestSprite = this.createSpeechBubble(currentCustomer.wants);
+            this.requestSprite.visible = false;
 
-        this.ui.updateQueueHUD(this.queue, this.currentLevel);
+            this.requestSprite.position.set(0, targetHeight + 0.4, 0);
+            this.customerGroup.add(this.requestSprite);
+
+            this.scene.add(this.customerGroup);
+            this.customerState = 'APPROACHING';
+
+            this.ui.updateQueueHUD(this.queue, this.currentLevel);
+        }, 1000);
     }
 
     startLevel() {
         this.state = 'PLAYING';
         this.queue = [];
-        const itemKeys = ['coffee', 'pretzel', 'pauldog'];
+        const itemKeys = ['burger', 'pizza', 'soda'];
         const colors = [
             { hex: 0x44aaff, str: '#44aaff' }, 
             { hex: 0xff44aa, str: '#ff44aa' }, 
@@ -344,8 +509,10 @@ class Game {
             { hex: 0x44ffaa, str: '#44ffaa' }  
         ];
 
-        this.totalCustomers = Math.min(20, 3 + this.currentLevel); 
-        this.degradeInterval = Math.max(3.0, 8.0 - (this.currentLevel - 1) * 0.4); 
+        // --- DIFFICULTY SCALING ---
+        this.totalCustomers = Math.min(30, 2 + (this.currentLevel * 2));
+        this.degradeInterval = Math.max(1.5, 6.5 - (this.currentLevel * 0.5));
+        this.customerSpeed = 6 + (this.currentLevel * 0.5);
 
         for (let i = 0; i < this.totalCustomers; i++) {
             const colorObj = colors[Math.floor(Math.random() * colors.length)];
@@ -365,17 +532,22 @@ class Game {
     handleInteraction() {
         if (this.state !== 'PLAYING' || !this.controls.isLocked || this.stallTimer > 0) return;
         if (this.hoveredItem && this.queue.length > 0 && this.customerState === 'WAITING') {
+            if (this.sounds.click) {
+                if (this.sounds.click.isPlaying) this.sounds.click.stop();
+                this.sounds.click.play();
+            }
+
             const currentCustomer = this.queue[0];
             if (this.hoveredItem.id === currentCustomer.wants) {
                 this.queue.shift();
                 this.requestSprite.visible = false;
                 this.customerState = 'LEAVING';
 
-                this.scene.background.setHex(0x1a331a); 
+                this.scene.background.setHex(0x1a331a);
                 setTimeout(() => this.scene.background.setHex(0x2a1a10), 150);
             } else {
-                this.stallTimer = 1.0; 
-                this.scene.background.setHex(0x440000); 
+                this.stallTimer = 1.0;
+                this.scene.background.setHex(0x440000);
                 setTimeout(() => this.scene.background.setHex(0x2a1a10), 200);
             }
         }
@@ -384,16 +556,7 @@ class Game {
     triggerLose() {
         this.state = 'LOST';
         this.controls.unlock();
-        if (this.customerGroup) this.scene.remove(this.customerGroup);
         this.ui.showLose();
-    }
-
-    restart() {
-        this.ui.loseScreen.style.display = 'none';
-        this.ui.hud.style.display        = 'block';
-        this.ui.crosshair.style.display  = 'block';
-        this.currentLevel = 1;
-        this.startLevel();
     }
 
     triggerWin() {
@@ -409,7 +572,7 @@ class Game {
                 this.currentLevel++;
                 this.startLevel();
             }
-        }, 5000);
+        }, 4000);
     }
 
     tick() {
@@ -419,14 +582,19 @@ class Game {
             if (this.stallTimer > 0) this.stallTimer -= dt;
 
             if (this.customerState === 'APPROACHING') {
-                this.customerGroup.position.z += 6 * dt; 
+                this.customerGroup.position.z += this.customerSpeed * dt;
                 if (this.customerGroup.position.z >= -2.0) {
                     this.customerGroup.position.z = -2.0;
                     this.customerState = 'WAITING';
-                    this.requestSprite.visible = true; 
+                    this.requestSprite.visible = true;
+
+                    if (this.sounds.mumble) {
+                        if (this.sounds.mumble.isPlaying) this.sounds.mumble.stop();
+                        this.sounds.mumble.play();
+                    }
                 }
             } else if (this.customerState === 'LEAVING') {
-                this.customerGroup.position.x += 8 * dt; 
+                this.customerGroup.position.x += (this.customerSpeed + 2) * dt;
                 if (this.customerGroup.position.x > 5) {
                     this.scene.remove(this.customerGroup);
                     this.spawnNextCustomer();
@@ -453,7 +621,7 @@ class Game {
             }
 
             this.raycaster.setFromCamera(new THREE.Vector2(0, 0), this.camera);
-            const intersects = this.raycaster.intersectObjects(this.items.map(i => i.mesh));
+            const intersects = this.raycaster.intersectObjects(this.items.map(i => i.mesh), true);
 
             this.hoveredItem = null;
             if (intersects.length > 0) {
