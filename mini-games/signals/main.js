@@ -108,9 +108,9 @@ class UIManager {
 
         const inZone = radio.position >= radio.tuneZoneStart && radio.position <= radio.tuneZoneEnd;
         const status = radio.tuned ? '✓ TUNED' : (inZone ? '⚡ LOCKED ON' : `target: ${radio.targetFreq} MHz`);
-        const channelStr = `CH${radio.channel} ${radio.channel === radio.tuningChannel ? '(target)' : '(wrong ch)'}`;
+        const channelStr = `CH${radio.channel}`;
         const numberDisplay = radio.assignedNumber && radio.tuned
-            ? `<span style="font-size:1.4rem;color:#FFD700;margin-bottom:8px;font-family:monospace">Code: ${parseInt(radio.assignedNumber, 10).toString(2).padStart(5, '0')}</span><br>`
+            ? `<span style="font-size:1.4rem;color:#FFD700;margin-bottom:8px;font-family:monospace">${radio.assignedPosition} - ${parseInt(radio.assignedNumber, 10).toString(2).padStart(5, '0')}</span><br>`
             : '';
 
         this.tuningUI.innerHTML =
@@ -280,11 +280,12 @@ class Radio {
         this.targetFreq = (88 + Math.floor(Math.random() * 20) + Math.random()).toFixed(1);
         this.tuned = false;
         this.assignedNumber = null;                  // assigned code number to display when tuned
+        this.assignedPosition = null;                // 1/2/3 — which slot in the code this number fills
 
-        // Tuning zone: a random sweet-spot window within the dial range
-        const margin = TUNE_ZONE_SIZE + 2;
+        const zoneSize = TUNE_ZONE_SIZE + Math.random() * 6 - 1; // 7–13, skewed slightly larger
+        const margin = zoneSize + 2;
         this.tuneZoneStart = margin + Math.random() * (TUNE_RANGE - margin * 2);
-        this.tuneZoneEnd   = this.tuneZoneStart + TUNE_ZONE_SIZE;
+        this.tuneZoneEnd   = this.tuneZoneStart + zoneSize;
 
         // Starting position: randomized, guaranteed outside the tune zone
         this._resetPosition();
@@ -915,23 +916,18 @@ class Game {
     }
 
     assignCodeNumbersToRadios() {
-        // Radio indices by layout:
-        //   0 = center (middle)
-        //   1 = top-left  (z=-6.5, near door)
-        //   2 = top-right (z=-6.5, near door)
-        //   3 = bottom-left  (z=+6.5, far from door)
-        //   4 = bottom-right (z=+6.5, far from door)
+        // Pick 3 distinct random radios from all 5 to carry the code parts
+        const indices = [0, 1, 2, 3, 4];
+        for (let i = indices.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [indices[i], indices[j]] = [indices[j], indices[i]];
+        }
+        const chosen = indices.slice(0, 3);
 
-        const nearDoor = [this.radios[1], this.radios[2]];
-        const middle   = [this.radios[0]];
-        const farDoor  = [this.radios[3], this.radios[4]];
-
-        // Pick one random radio from each group
-        const pick = arr => arr[Math.floor(Math.random() * arr.length)];
-
-        pick(farDoor).assignedNumber  = this.codeParts[0]; // first third
-        pick(middle).assignedNumber   = this.codeParts[1]; // second third
-        pick(nearDoor).assignedNumber = this.codeParts[2]; // last third
+        chosen.forEach((radioIdx, slot) => {
+            this.radios[radioIdx].assignedNumber   = this.codeParts[slot];
+            this.radios[radioIdx].assignedPosition = slot + 1; // 1-based position label
+        });
     }
 }
 
