@@ -5,6 +5,10 @@ class UIManager {
     constructor() {
         this.flashOverlay = this.createOverlay('rgba(0, 0, 0, 0.9)', '#ffffff', '');
 
+        const hint = '<div style="font-size:.9rem;color:#aaa;margin-top:32px;letter-spacing:.15em">PRESS <span style="color:#fff">R</span> TO RETRY &nbsp;·&nbsp; <span style="color:#fff">L</span> FOR LOBBY</div>';
+        this.loseScreen = this.createOverlay('#220000', '#FF4444', 'TIMP EXPIRAT.<br>' + hint);
+        this.winScreen  = this.createOverlay('#001a00', '#00ffaa', 'END OF SEMESTER!<br><div style="font-size:1.5rem;color:#aaa;margin-top:16px;">You have completed all levels.</div>' + hint);
+
         // game info
         this.statusBox = document.createElement('div');
         this.statusBox.style.position = 'absolute';
@@ -130,6 +134,12 @@ class TuringMachineGame {
         this.initEnvironment();
 
         window.addEventListener('keydown', (e) => this.handleKeyboard(e));
+        window.addEventListener('keydown', e => {
+            const k = e.key.toLowerCase();
+            const isTerminal = this.ui.loseScreen.style.display === 'flex' || this.ui.winScreen.style.display === 'flex';
+            if (k === 'r' && isTerminal) this.restart();
+            if (k === 'l' && isTerminal) window.location.href = '/lobby';
+        });
         window.addEventListener('click', (e) => this.handleMouseClick(e));
         window.addEventListener('resize', () => this.onWindowResize());
 
@@ -342,7 +352,9 @@ class TuringMachineGame {
 
     startLevel(levelIndex) {
         if (levelIndex >= this.quotes.length) {
-            this.ui.showMessage("End of semester!", "You have completed all levels.", "#ffd700", 100000);
+            this.isProcessing = true;
+            this.controls.unlock();
+            this.ui.winScreen.style.display = 'flex';
             return;
         }
 
@@ -425,6 +437,15 @@ class TuringMachineGame {
         }, 300);
     }
 
+    restart() {
+        this.ui.loseScreen.style.display = 'none';
+        this.ui.winScreen.style.display  = 'none';
+        this.ui.statusBox.style.display  = 'block';
+        this.ui.helperBox.style.display  = 'block';
+        this.ui.crosshair.style.display  = 'block';
+        this.startLevel(0);
+    }
+
     triggerFail() {
         this.isProcessing = true;
         this.controls.unlock();
@@ -432,8 +453,8 @@ class TuringMachineGame {
         const failQuotes = ["am ajuns în broască", "timpul s-a scurs", "lucrurile s-au cam imputit"];
         const q = failQuotes[Math.floor(Math.random() * failQuotes.length)];
 
-        this.ui.showMessage(q, "Level failed. Redirecting to lobby...", '#ff4444', 3000, () => {
-            window.location.href = '/lobby';
+        this.ui.showMessage(q, "Level failed.", '#ff4444', 2000, () => {
+            this.ui.loseScreen.style.display = 'flex';
         });
     }
 

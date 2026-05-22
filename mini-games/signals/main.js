@@ -15,10 +15,11 @@ const SCROLL_SENSITIVITY = 1; // how many units one scroll tick moves the dial
 // ─────────────────────────────────────────────
 class UIManager {
     constructor() {
+        const hint = '<div style="font-size:.9rem;color:#aaa;margin-top:32px;letter-spacing:.15em">PRESS <span style="color:#fff">R</span> TO RETRY &nbsp;·&nbsp; <span style="color:#fff">L</span> FOR LOBBY</div>';
         this.winScreen  = this._overlay('#000', '#50C878',
-            'All radios tuned!<br>The music plays on.');
+            'All radios tuned!<br>The music plays on.' + hint);
         this.loseScreen = this._overlay('#1a0000', '#FF4444',
-            'Time\'s up!<br>The static wins.');
+            'Time\'s up!<br>The static wins.' + hint);
 
         this.hud = document.createElement('div');
         Object.assign(this.hud.style, {
@@ -59,6 +60,7 @@ class UIManager {
             position: 'absolute', top: '0', left: '0',
             width: '100vw', height: '100vh',
             backgroundColor: bg, color, display: 'none',
+            flexDirection: 'column',
             alignItems: 'center', justifyContent: 'center',
             fontSize: '3rem', fontFamily: 'Arial, sans-serif',
             textAlign: 'center'
@@ -450,7 +452,9 @@ class Radio {
         this.staticNode.loop = true;
         this.staticGain = this.audioCtx.createGain();
         this.staticGain.gain.value = 1;
-        this.staticNode.connect(this.staticGain).connect(this.audioCtx.destination);
+        const staticMaster = this.audioCtx.createGain();
+        staticMaster.gain.value = 0.05;
+        this.staticNode.connect(this.staticGain).connect(staticMaster).connect(this.audioCtx.destination);
         this.staticNode.start();
 
         // Simple music: a little chord (root + major third + fifth)
@@ -466,8 +470,13 @@ class Radio {
             osc.connect(g).connect(this.musicGain);
             osc.start();
         });
-        this.musicGain.connect(this.audioCtx.destination);
+        const musicMaster = this.audioCtx.createGain();
+        musicMaster.gain.value = 0.25;
+        this.musicGain.connect(musicMaster).connect(this.audioCtx.destination);
     }
+
+    suspendAudio() { this.audioCtx?.suspend(); }
+    resumeAudio()  { this.audioCtx?.resume(); }
 
     stopAudio() {
         this.staticNode?.stop();
@@ -717,6 +726,7 @@ class Game {
 
         // If already tuning radio, step away
         if (this.activeRadio !== null) {
+            this.activeRadio.suspendAudio();
             this.player.isTuning = false;
             this.ui.hideTuning();
             this.activeRadio = null;
@@ -749,6 +759,7 @@ class Game {
         }
         if (nearest) {
             this.activeRadio = nearest;
+            nearest.resumeAudio();
             this.player.isTuning = true;
             this.ui.showTuning(nearest);
         }
@@ -825,11 +836,15 @@ class Game {
     endGame(result) {
         this.state = result;
         this.controls.unlock();
-        this.renderer.setAnimationLoop(null);
-        this.renderer.domElement.style.display = 'none';
         this.radios.forEach(r => r.stopAudio());
         if (result === 'WON')  this.ui.showWin();
         if (result === 'LOST') this.ui.showLose();
+
+        window.addEventListener('keydown', e => {
+            const k = e.key.toLowerCase();
+            if (k === 'r') window.location.reload();
+            if (k === 'l') window.location.href = '/lobby';
+        }, { once: false });
     }
 
     checkCollision(pos, radius) {
