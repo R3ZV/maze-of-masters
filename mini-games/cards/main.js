@@ -213,8 +213,8 @@ class Game {
 
     playSound(subdir, filename) {
         const path = subdir
-            ? `/cristi_samples/${subdir}/${encodeURIComponent(filename)}`
-            : `/cristi_samples/${encodeURIComponent(filename)}`;
+            ? `/mini-games/cards/cristi_samples/${subdir}/${encodeURIComponent(filename)}`
+            : `/mini-games/cards/cristi_samples/${encodeURIComponent(filename)}`;
         new Audio(path).play().catch(() => { });
     }
 
@@ -245,7 +245,7 @@ class Game {
             ctx.drawImage(img, 16, 16, size - 32, size - 32);
             texture.needsUpdate = true;
         };
-        img.src = `/symbols/${svgName}.svg`;
+        img.src = `/mini-games/cards/symbols/${svgName}.svg`;
 
         return texture;
     }
