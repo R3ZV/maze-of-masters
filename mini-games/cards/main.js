@@ -44,8 +44,12 @@ class UIManager {
     }
 
     updateHUD(status, lives, maxLives) {
-        let hearts = '❤️'.repeat(lives) + '🖤'.repeat(maxLives - lives);
-        this.hud.innerHTML = `${status}<br><span style="font-size: 1.5rem;">Lives: ${hearts}</span>`;
+        const src = '/mini-games/cards/prolog_owl.svg';
+        const base = `width:2rem;height:2rem;vertical-align:middle;margin:0 2px;`;
+        const activeOwl = `<img src="${src}" style="${base}filter:brightness(0) saturate(100%) invert(15%) sepia(93%) saturate(6397%) hue-rotate(3deg) brightness(94%) contrast(119%);">`;
+        const emptyOwl  = `<img src="${src}" style="${base}filter:brightness(0) opacity(0.25);">`;
+        const owls = activeOwl.repeat(lives) + emptyOwl.repeat(maxLives - lives);
+        this.hud.innerHTML = `${status}<br><span style="font-size:1.5rem;">Lives: ${owls}</span>`;
     }
 
     showLose() {
