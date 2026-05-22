@@ -1,4 +1,4 @@
-import {WebPdWorkletNode, registerWebPdWorkletNode } from '@webpd/runtime'; 
+import {WebPdWorkletNode, registerWebPdWorkletNode } from 'runtime'; 
 
 export class WebPdSocket {
     constructor(path) {

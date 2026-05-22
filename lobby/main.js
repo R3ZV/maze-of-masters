@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 import { VRButton } from 'three/addons/webxr/VRButton.js';
+import { WebPdSocket } from '../music/interface.js';
 
 class UIManager {
     constructor() {
@@ -111,7 +112,8 @@ class Game {
         this.walls = [];
         this.npcs = [];
         this.hoveredNPC = null;
-
+        this.audioSocket = new WebPdSocket("../patches/lobby-background.wasm");
+        this.volume = 0.13;
         this.initRenderer();
         this.initScene();
         this.initVRControllers();
@@ -135,6 +137,8 @@ class Game {
         ];
         this.buildMaze(layout);
 
+        this.audioSocket.listen().catch(err => console.error("[Audio] init failed:", err));
+        
         this.renderer.setAnimationLoop(() => this.tick());
     }
 
@@ -303,6 +307,7 @@ class Game {
             if (this.hoveredNPC) {
                 this.hoveredNPC.sprite.visible = true;
             }
+            this.audioSocket.send('lobbyVolume', this.volume);
         }
 
         this.renderer.render(this.scene, this.camera);
