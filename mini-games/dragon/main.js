@@ -68,6 +68,44 @@ class InputManager {
     }
 }
 
+class FootstepAudio {
+    constructor(camera) {
+        this.listener = new THREE.AudioListener();
+        camera.add(this.listener);
+        this.sounds = [];
+        this.stepInterval = 0.42;
+        this.timer = 0;
+        this.lastIndex = -1;
+
+        const loader = new THREE.AudioLoader();
+        for (let i = 1; i <= 6; i++) {
+            const audio = new THREE.Audio(this.listener);
+            loader.load(`assets/foot_${i}.wav`, buf => audio.setBuffer(buf));
+            this.sounds.push(audio);
+        }
+    }
+
+    _playStep() {
+        if (this.sounds.every(s => !s.buffer)) return;
+        const ready = this.sounds.filter((s, i) => s.buffer && i !== this.lastIndex);
+        if (!ready.length) return;
+        const snd = ready[Math.floor(Math.random() * ready.length)];
+        this.lastIndex = this.sounds.indexOf(snd);
+        if (snd.isPlaying) snd.stop();
+        snd.setVolume(0.6);
+        snd.play();
+    }
+
+    update(isMoving, delta) {
+        if (!isMoving) { this.timer = this.stepInterval; return; }
+        this.timer += delta;
+        if (this.timer >= this.stepInterval) {
+            this._playStep();
+            this.timer = 0;
+        }
+    }
+}
+
 class Player {
     constructor(camera) {
         this.state = { onChair: false };
@@ -82,6 +120,7 @@ class Player {
 
         this.speed = 0.12;
         this.currentChairPos = new THREE.Vector3();
+        this.footsteps = new FootstepAudio(camera);
     }
 
     sitDown(chairWorldPos) {
@@ -98,8 +137,8 @@ class Player {
         this.camera.position.y = this.standingHeight;
     }
 
-    updateMovement(keys) {
-        if (this.state.onChair) return;
+    updateMovement(keys, delta) {
+        if (this.state.onChair) { this.footsteps.update(false, delta); return; }
 
         const euler = new THREE.Euler(0, 0, 0, 'YXZ');
         euler.setFromQuaternion(this.camera.quaternion);
@@ -110,6 +149,9 @@ class Player {
         if (keys.s) this.rig.position.addScaledVector(direction, -this.speed);
         if (keys.a) this.rig.position.addScaledVector(right, -this.speed);
         if (keys.d) this.rig.position.addScaledVector(right, this.speed);
+
+        const isMoving = keys.w || keys.s || keys.a || keys.d;
+        this.footsteps.update(isMoving, delta);
     }
 }
 
@@ -302,7 +344,7 @@ class Game {
     }
 
     update(dt) {
-        this.player.updateMovement(this.input.keys);
+        this.player.updateMovement(this.input.keys, dt);
         this.updateUIProximity();
         this.updateDragonLogic(dt);
     }

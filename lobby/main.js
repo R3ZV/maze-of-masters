@@ -37,19 +37,58 @@ class InputManager {
     }
 }
 
+class FootstepAudio {
+    constructor(camera) {
+        this.listener = new THREE.AudioListener();
+        camera.add(this.listener);
+        this.sounds = [];
+        this.stepInterval = 0.42;
+        this.timer = 0;
+        this.lastIndex = -1;
+
+        const loader = new THREE.AudioLoader();
+        for (let i = 1; i <= 6; i++) {
+            const audio = new THREE.Audio(this.listener);
+            loader.load(`assets/foot_${i}.wav`, buf => audio.setBuffer(buf));
+            this.sounds.push(audio);
+        }
+    }
+
+    _playStep() {
+        if (this.sounds.every(s => !s.buffer)) return;
+        const ready = this.sounds.filter((s, i) => s.buffer && i !== this.lastIndex);
+        if (!ready.length) return;
+        const snd = ready[Math.floor(Math.random() * ready.length)];
+        this.lastIndex = this.sounds.indexOf(snd);
+        if (snd.isPlaying) snd.stop();
+        snd.setVolume(0.6);
+        snd.play();
+    }
+
+    update(isMoving, delta) {
+        if (!isMoving) { this.timer = this.stepInterval; return; }
+        this.timer += delta;
+        if (this.timer >= this.stepInterval) {
+            this._playStep();
+            this.timer = 0;
+        }
+    }
+}
+
 class Player {
     constructor(camera) {
         this.rig = new THREE.Group();
-        this.rig.position.set(0, 0, 0); 
+        this.rig.position.set(0, 0, 0);
         this.rig.add(camera);
         this.camera = camera;
         this.desktopHeight = 1.6;
         this.camera.position.y = this.desktopHeight;
         this.speed = 0.08;
-        this.radius = 0.5; 
+        this.radius = 0.5;
+        this.footsteps = new FootstepAudio(camera);
     }
 
-    updateMovement(keys, walls, renderer) {
+    updateMovement(keys, walls, renderer, delta) {
         const euler = new THREE.Euler(0, 0, 0, 'YXZ');
         euler.setFromQuaternion(this.camera.quaternion);
         const direction = new THREE.Vector3(0, 0, -1).applyEuler(new THREE.Euler(0, euler.y, 0)).normalize();
@@ -77,18 +116,21 @@ class Player {
             this.camera.position.y = this.desktopHeight;
         }
 
-        if (moveVec.lengthSq() > 0) {
+        const isMoving = moveVec.lengthSq() > 0;
+        if (isMoving) {
             moveVec.normalize().multiplyScalar(this.speed);
             this.rig.position.x += moveVec.x;
             if (this.checkCollisions(walls)) {
-                this.rig.position.x -= moveVec.x; 
+                this.rig.position.x -= moveVec.x;
             }
 
             this.rig.position.z += moveVec.z;
             if (this.checkCollisions(walls)) {
-                this.rig.position.z -= moveVec.z; 
+                this.rig.position.z -= moveVec.z;
             }
         }
+
+        this.footsteps.update(isMoving, delta);
     }
 
     checkCollisions(walls) {
@@ -276,8 +318,9 @@ class Game {
     }
 
     tick() {
+        const delta = this.clock.getDelta();
         if (this.controls.isLocked || this.renderer.xr.isPresenting) {
-            this.player.updateMovement(this.input.keys, this.walls, this.renderer);
+            this.player.updateMovement(this.input.keys, this.walls, this.renderer, delta);
 
             this.hoveredNPC = null;
             let closestDist = 3.0;

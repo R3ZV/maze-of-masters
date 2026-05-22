@@ -179,6 +179,47 @@ class InputManager {
 }
 
 // ─────────────────────────────────────────────
+// FootstepAudio
+// ─────────────────────────────────────────────
+class FootstepAudio {
+    constructor(camera) {
+        this.listener = new THREE.AudioListener();
+        camera.add(this.listener);
+        this.sounds = [];
+        this.stepInterval = 0.42;
+        this.timer = 0;
+        this.lastIndex = -1;
+
+        const loader = new THREE.AudioLoader();
+        for (let i = 1; i <= 6; i++) {
+            const audio = new THREE.Audio(this.listener);
+            loader.load(`assets/foot_${i}.wav`, buf => audio.setBuffer(buf));
+            this.sounds.push(audio);
+        }
+    }
+
+    _playStep() {
+        if (this.sounds.every(s => !s.buffer)) return;
+        const ready = this.sounds.filter((s, i) => s.buffer && i !== this.lastIndex);
+        if (!ready.length) return;
+        const snd = ready[Math.floor(Math.random() * ready.length)];
+        this.lastIndex = this.sounds.indexOf(snd);
+        if (snd.isPlaying) snd.stop();
+        snd.setVolume(0.6);
+        snd.play();
+    }
+
+    update(isMoving, delta) {
+        if (!isMoving) { this.timer = this.stepInterval; return; }
+        this.timer += delta;
+        if (this.timer >= this.stepInterval) {
+            this._playStep();
+            this.timer = 0;
+        }
+    }
+}
+
+// ─────────────────────────────────────────────
 // Player
 // ─────────────────────────────────────────────
 class Player {
@@ -192,10 +233,11 @@ class Player {
         this.isTuning = false; // locked to a radio
         this.collisionChecker = null; // will be set by Game
         this.collisionRadius = 0.3; // collision sphere radius
+        this.footsteps = new FootstepAudio(camera);
     }
 
-    updateMovement(keys) {
-        if (this.isTuning) return;
+    updateMovement(keys, delta) {
+        if (this.isTuning) { this.footsteps.update(false, delta); return; }
         const euler = new THREE.Euler(0, 0, 0, 'YXZ');
         euler.setFromQuaternion(this.camera.quaternion);
         const fwd   = new THREE.Vector3(0, 0, -1).applyEuler(new THREE.Euler(0, euler.y, 0));
@@ -219,6 +261,9 @@ class Player {
         if (!this.collisionChecker || !this.collisionChecker(testZOnly, this.collisionRadius)) {
             this.rig.position.z = newPos.z;
         }
+
+        const isMoving = keys.w || keys.s || keys.a || keys.d;
+        this.footsteps.update(isMoving, delta);
     }
 }
 
@@ -749,7 +794,7 @@ class Game {
     }
 
     update(dt) {
-        this.player.updateMovement(this.input.keys);
+        this.player.updateMovement(this.input.keys, dt);
         this.updateProximity();
         this.updateTimer(dt);
     }
