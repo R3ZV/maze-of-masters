@@ -8,3 +8,6 @@ our local host to a secure web server via `ngrok http 8000`.
 
 Also make sure you run a chromium based browser as they are the most reliable,
 now you can go to `https://<domain-provided-by-ngrok>/lobby` to start the game.
+
+# References
+- https://citate-fmi.tiddlyhost.com/

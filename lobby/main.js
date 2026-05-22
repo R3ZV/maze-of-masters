@@ -4,15 +4,6 @@ import { VRButton } from 'three/addons/webxr/VRButton.js';
 
 class UIManager {
     constructor() {
-        this.hud = document.createElement('div');
-        this.hud.style.position = 'absolute';
-        this.hud.style.top = '20px'; this.hud.style.width = '100vw';
-        this.hud.style.color = 'white'; this.hud.style.fontSize = '2rem';
-        this.hud.style.fontFamily = 'Arial, sans-serif'; this.hud.style.textAlign = 'center';
-        this.hud.style.textShadow = '2px 2px 4px #000000';
-        this.hud.style.pointerEvents = 'none'; // Let clicks pass through to lock pointer
-        document.body.appendChild(this.hud);
-
         this.crosshair = document.createElement('div');
         this.crosshair.style.position = 'absolute';
         this.crosshair.style.top = '50%'; this.crosshair.style.left = '50%';
@@ -22,10 +13,6 @@ class UIManager {
         this.crosshair.style.transform = 'translate(-50%, -50%)';
         this.crosshair.style.pointerEvents = 'none';
         document.body.appendChild(this.crosshair);
-    }
-
-    updateHUD(text) {
-        this.hud.innerHTML = text;
     }
 }
 
@@ -128,16 +115,23 @@ class Game {
         this.initRenderer();
         this.initScene();
         this.initVRControllers();
+
         const layout = [
-            "#########",
-            "#A..#..B#",
-            "###.#.###",
-            "#.......#",
-            "#.##.##.#", 
-            "#.......#",
-            "###.#.###",
-            "#C..#..D#",
-            "#########"
+            "###############",
+            "#A....#.F.#..B#",
+            "#####.#.#.#.###",
+            "#.....#.#.....#",
+            "#.#####.#####.#",
+            "#.#...#...#...#",
+            "#.#.#.###.#.###",
+            "#...#.....#...#",
+            "###.#.#######.#",
+            "#E..#.#.......#",
+            "#.###.#.#####.#",
+            "#.#...#...#...#",
+            "#.#.#####.#.###",
+            "#C......#....D#",
+            "###############"
         ];
         this.buildMaze(layout);
 
@@ -214,6 +208,18 @@ class Game {
         return sprite;
     }
 
+    getGameData(id) {
+        switch(id) {
+            case 'A': return { name: `Dragon's lair`,       url: '/mini-games/dragon' };
+            case 'B': return { name: 'Match the Sipos',     url: '/mini-games/cards' };
+            case 'C': return { name: `Paul's shop`,         url: '/mini-games/paul' };
+            case 'D': return { name: `Rusu's radio`,        url: '/mini-games/signals' };
+            case 'E': return { name: `Paun's room`,         url: '/mini-games/paul' };
+            case 'F': return { name: `Chirita's rocket`,    url: '/mini-games/rocket' };
+            default: return { name: 'unknown',              url: '#' };
+        }
+    }
+
     buildMaze(matrix) {
         const cellSize = 4;
         const wallHeight = 4;
@@ -258,7 +264,8 @@ class Game {
         body.position.y = 0.8;
         group.add(body);
 
-        const text = this.createTextSprite(`[E] or [Trigger]: Game ${id}`);
+        const gameData = this.getGameData(id);
+        const text = this.createTextSprite(`[E]: Enter ${gameData.name}`);
         text.position.set(0, 2.2, 0);
         text.visible = false;
         group.add(text);
@@ -266,16 +273,14 @@ class Game {
         group.position.set(x, 0, z);
         this.scene.add(group);
 
-        this.npcs.push({ id: id, mesh: group, sprite: text, position: new THREE.Vector3(x, 0, z) });
+        this.npcs.push({ id: id, data: gameData, mesh: group, sprite: text, position: new THREE.Vector3(x, 0, z) });
     }
 
     handleInteraction() {
         if (!this.hoveredNPC) return;
-
-        if (this.hoveredNPC.id === 'A') window.location.href = '/mini-games/dragon';
-        if (this.hoveredNPC.id === 'B') window.location.href = '/mini-games/cards';
-        if (this.hoveredNPC.id === 'C') window.location.href = '/mini-games/signals';
-        if (this.hoveredNPC.id === 'D') window.location.href = '/mini-games/space';
+        if (this.hoveredNPC.data.url !== '#') {
+            window.location.href = this.hoveredNPC.data.url;
+        }
     }
 
     tick() {
@@ -298,9 +303,6 @@ class Game {
 
             if (this.hoveredNPC) {
                 this.hoveredNPC.sprite.visible = true;
-                this.ui.updateHUD(`Game ${this.hoveredNPC.id} Portal`);
-            } else {
-                this.ui.updateHUD("Lobby");
             }
         }
 
