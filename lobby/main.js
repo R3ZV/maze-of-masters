@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 import { VRButton } from 'three/addons/webxr/VRButton.js';
+import { WebPdSocket } from '../music/interface.js';
 
 class UIManager {
     constructor() {
@@ -153,7 +154,8 @@ class Game {
         this.walls = [];
         this.npcs = [];
         this.hoveredNPC = null;
-
+        this.audioSocket = new WebPdSocket("ws://localhost:8765");
+        this.volume = 0.13;
         this.initRenderer();
         this.initScene();
         this.initVRControllers();
@@ -169,6 +171,14 @@ class Game {
         ];
         this.buildMaze(layout);
 
+        this.audioSocket.listen()
+            .then(() => this.audioSocket.send('lobbyVolume', this.volume))
+            .catch(err => console.error("[Audio] init failed:", err));
+
+        window.addEventListener('beforeunload', () => {
+            this.audioSocket.send('lobbyVolume', 0);
+        });
+        
         this.renderer.setAnimationLoop(() => this.tick());
     }
 
@@ -313,6 +323,7 @@ class Game {
     handleInteraction() {
         if (!this.hoveredNPC) return;
         if (this.hoveredNPC.data.url !== '#') {
+            this.audioSocket.send('lobbyVolume', 0);
             window.location.href = this.hoveredNPC.data.url;
         }
     }
@@ -339,6 +350,7 @@ class Game {
             if (this.hoveredNPC) {
                 this.hoveredNPC.sprite.visible = true;
             }
+            this.audioSocket.send('lobbyVolume', this.volume);
         }
 
         this.renderer.render(this.scene, this.camera);
