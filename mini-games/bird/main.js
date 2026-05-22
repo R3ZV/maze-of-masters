@@ -5,18 +5,18 @@ class UIManager {
     constructor() {
         this.flashOverlay = this.createOverlay('rgba(0, 0, 0, 0.9)', '#ffffff', '');
 
-        // Timer and Level Info
+        // game info
         this.statusBox = document.createElement('div');
         this.statusBox.style.position = 'absolute';
         this.statusBox.style.top = '20px';
         this.statusBox.style.right = '30px';
-        this.statusBox.style.color = '#ffffff'; 
+        this.statusBox.style.color = '#ffffff';
         this.statusBox.style.fontSize = '2rem';
         this.statusBox.style.textAlign = 'right';
         this.statusBox.style.textShadow = '2px 2px 4px #000';
         document.body.appendChild(this.statusBox);
 
-        // Controls Helper
+        // controls helper
         this.helperBox = document.createElement('div');
         this.helperBox.style.position = 'absolute';
         this.helperBox.style.bottom = '20px';
@@ -29,7 +29,6 @@ class UIManager {
         this.helperBox.style.textAlign = 'center';
         document.body.appendChild(this.helperBox);
 
-        // Crosshair
         this.crosshair = document.createElement('div');
         this.crosshair.style.position = 'absolute';
         this.crosshair.style.top = '50%'; this.crosshair.style.left = '50%';
@@ -37,7 +36,9 @@ class UIManager {
         this.crosshair.style.backgroundColor = 'white';
         this.crosshair.style.borderRadius = '50%';
         this.crosshair.style.transform = 'translate(-50%, -50%)';
-        this.crosshair.style.pointerEvents = 'none'; // So clicks pass through to the game
+
+        // so clicks pass through to the game
+        this.crosshair.style.pointerEvents = 'none';
         this.crosshair.style.boxShadow = '0 0 4px rgba(0,0,0,0.8)';
         document.body.appendChild(this.crosshair);
     }
@@ -49,8 +50,8 @@ class UIManager {
         div.style.width = '100vw'; div.style.height = '100vh';
         div.style.backgroundColor = bgColor; div.style.color = textColor;
         div.style.display = 'none'; div.style.flexDirection = 'column';
-        div.style.alignItems = 'center'; div.style.justifyContent = 'center'; 
-        div.style.fontSize = '2.5rem';  
+        div.style.alignItems = 'center'; div.style.justifyContent = 'center';
+        div.style.fontSize = '2.5rem';
         div.style.textAlign = 'center'; div.style.padding = '0 10%'; div.style.boxSizing = 'border-box';
         div.style.zIndex = '100';
         div.innerHTML = text;
@@ -70,7 +71,7 @@ class UIManager {
         this.statusBox.style.display = 'none';
         this.helperBox.style.display = 'none';
         this.crosshair.style.display = 'none';
-        
+
         this.flashOverlay.innerHTML = `
             <div style="font-style: italic; color: ${color}; max-width: 1000px; font-size: 3.5rem;">"${quote}"</div>
             <div style="font-size: 2rem; color: #aaaaaa; margin-top: 40px;">- Păun</div>
@@ -92,50 +93,46 @@ class TuringMachineGame {
     constructor() {
         this.clock = new THREE.Clock();
         this.ui = new UIManager();
-        
+
         const rawQuotes = [
-            "Aaah", "Fascism.", "Și niste bălării", "Am ajuns la Mickey Mouse",
-            "O explozie de stări", "Am ajuns în broască", "Îți bagi un cui în talpă",
-            "Nu a*. Cuvinte adevărate", "Mai repede și mai rapid",
-            "Mizerie de-asta de lambda-NFA", "O sa sar de blah blah blah-uri",
-            "E orătania nr. 2 care ne dispera", "Daca am ajuns în B nu mai scap",
-            "daca va placeau DFA-urile, foarte rău",
-            "Planul nostru este sa blocăm toate amfiteatrele",
-            "17 icși o sa am 17 igreci. Sunt un fel de domino-uri."
+            "aaah",
+            "fascism",
+            "și niste bălării",
+            "am ajuns la mickey mouse",
+            "o explozie de stări",
+            "am ajuns în broască",
+            "iti bagi un cui în talpă",
+            "Nu a* cuvinte adevărate",
+            "mai repede și mai rapid",
+            "mizerie de asta de lambda NFA",
+            "o sa sar de blah blah blah-uri",
+            "e orătania nr 2 care ne dispera",
+            "daca am ajuns în B nu mai scap",
+            "planul nostru este sa blocăm toate amfiteatrele",
         ];
-        
-        // Lowercase and remove punctuation, keeping letters, numbers, spaces
-        const processedQuotes = rawQuotes.map(q => 
-            q.toLowerCase()
-             .replace(/[^\p{L}\p{N}\s]/gu, '')
-             .replace(/\s+/g, ' ')
-             .trim()
-        );
-        
-        this.quotes = processedQuotes.sort((a, b) => a.length - b.length);
-        
+
+        this.quotes = rawQuotes.sort((a, b) => a.length - b.length);
+
         this.currentLevel = 0;
         this.timeRemaining = 0;
-        this.isProcessing = true; 
-        
+        this.isProcessing = true;
+
         this.targetQuote = "";
         this.quoteProgress = 0;
-        
-        // Tape setup
+
         this.tapeString = "";
         this.tapeIndex = 0;
-        
+
         this.cards = [];
-        this.numCards = 5; // How many slots fit on the desk
+        this.numCards = 5;
 
         this.initScene();
         this.initEnvironment();
-        
-        // Event Listeners
+
         window.addEventListener('keydown', (e) => this.handleKeyboard(e));
         window.addEventListener('click', (e) => this.handleMouseClick(e));
         window.addEventListener('resize', () => this.onWindowResize());
-        
+
         this.startLevel(0);
         this.renderer.setAnimationLoop(() => this.tick());
     }
@@ -147,20 +144,18 @@ class TuringMachineGame {
         document.body.appendChild(this.renderer.domElement);
 
         this.scene = new THREE.Scene();
-        this.scene.background = new THREE.Color(0x1a1a24); 
+        this.scene.background = new THREE.Color(0x1a1a24);
 
-        // Camera - Seated position at desk
+        // seated position at desk
         this.camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
-        this.camera.position.set(0, 2.5, 3.5); 
+        this.camera.position.set(0, 2.5, 3.5);
 
-        // PointerLockControls (FPS style)
         this.controls = new PointerLockControls(this.camera, document.body);
-        
-        // Lighting
+
         const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
         this.scene.add(ambientLight);
 
-        const pointLight = new THREE.PointLight(0xffddaa, 1.2); 
+        const pointLight = new THREE.PointLight(0xffddaa, 1.2);
         pointLight.position.set(0, 5, 0);
         pointLight.castShadow = true;
         this.scene.add(pointLight);
@@ -169,45 +164,37 @@ class TuringMachineGame {
     }
 
     initEnvironment() {
-        // --- CLASSROOM WALLS ---
-        const wallMat = new THREE.MeshStandardMaterial({ color: 0xe0e0e0, roughness: 0.9 });
-        const floorMat = new THREE.MeshStandardMaterial({ color: 0x3d2b1f, roughness: 0.8 }); // Dark wood
-        
-        // Floor
+        const wallMat = new THREE.MeshStandardMaterial({ color: 0xede8d0, roughness: 0.9 });
+        const floorMat = new THREE.MeshStandardMaterial({ color: 0x3d2b1f, roughness: 0.8 });
+
         const floor = new THREE.Mesh(new THREE.PlaneGeometry(30, 30), floorMat);
         floor.rotation.x = -Math.PI / 2;
         this.scene.add(floor);
-        
-        // Ceiling
+
         const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(30, 30), wallMat);
         ceiling.rotation.x = Math.PI / 2;
         ceiling.position.y = 10;
         this.scene.add(ceiling);
 
-        // Front Wall
         const frontWall = new THREE.Mesh(new THREE.PlaneGeometry(30, 10), wallMat);
         frontWall.position.set(0, 5, -8);
         this.scene.add(frontWall);
 
-        // Back Wall
         const backWall = new THREE.Mesh(new THREE.PlaneGeometry(30, 10), wallMat);
         backWall.rotation.y = Math.PI;
         backWall.position.set(0, 5, 8);
         this.scene.add(backWall);
 
-        // Left Wall
         const leftWall = new THREE.Mesh(new THREE.PlaneGeometry(30, 10), wallMat);
         leftWall.rotation.y = Math.PI / 2;
         leftWall.position.set(-10, 5, 0);
         this.scene.add(leftWall);
 
-        // Right Wall
         const rightWall = new THREE.Mesh(new THREE.PlaneGeometry(30, 10), wallMat);
         rightWall.rotation.y = -Math.PI / 2;
         rightWall.position.set(10, 5, 0);
         this.scene.add(rightWall);
 
-        // --- DESK & GAME ASSETS ---
         const deskGeo = new THREE.BoxGeometry(10, 0.2, 4);
         const deskMat = new THREE.MeshStandardMaterial({ color: 0x4a3018, roughness: 0.8 });
         this.desk = new THREE.Mesh(deskGeo, deskMat);
@@ -215,7 +202,6 @@ class TuringMachineGame {
         this.desk.receiveShadow = true;
         this.scene.add(this.desk);
 
-        // Cards Array (Fixed positions on desk)
         const tileGeo = new THREE.PlaneGeometry(1.0, 1.0);
         for(let i = 0; i < this.numCards; i++) {
             const canvas = document.createElement('canvas');
@@ -223,24 +209,24 @@ class TuringMachineGame {
             const tex = new THREE.CanvasTexture(canvas);
             const mat = new THREE.MeshBasicMaterial({ map: tex });
             const card = new THREE.Mesh(tileGeo, mat);
-            
-            card.rotation.x = -Math.PI / 2; 
-            // Position them from center (x=0) extending to the right
-            card.position.set(i * 1.2, 0.61, -0.2); 
-            
+
+            card.rotation.x = -Math.PI / 2;
+
+            // from 0 extend to the right
+            card.position.set(i * 1.2, 0.61, -0.2);
+
             this.scene.add(card);
             this.cards.push({ mesh: card, canvas: canvas, tex: tex });
         }
 
-        // Active Tile Highlight (Under card[0])
+        // only for card 0
         const highlightGeo = new THREE.PlaneGeometry(1.15, 1.15);
-        this.highlightMat = new THREE.MeshBasicMaterial({ color: 0xffd700 }); 
+        this.highlightMat = new THREE.MeshBasicMaterial({ color: 0xffd700 });
         this.highlightBox = new THREE.Mesh(highlightGeo, this.highlightMat);
         this.highlightBox.rotation.x = -Math.PI / 2;
-        this.highlightBox.position.set(0, 0.605, -0.2); 
+        this.highlightBox.position.set(0, 0.605, -0.2);
         this.scene.add(this.highlightBox);
 
-        // Submit Button (Right in front of the active card)
         const baseGeo = new THREE.BoxGeometry(1, 0.2, 1);
         const baseMat = new THREE.MeshStandardMaterial({ color: 0x111111 });
         const buttonBase = new THREE.Mesh(baseGeo, baseMat);
@@ -254,57 +240,58 @@ class TuringMachineGame {
         this.submitButton.userData = { isSubmit: true };
         this.scene.add(this.submitButton);
 
-        // Chalkboard
         this.boardCanvas = document.createElement('canvas');
         this.boardCanvas.width = 1024;
         this.boardCanvas.height = 512;
         this.boardTexture = new THREE.CanvasTexture(this.boardCanvas);
-        
+
         const boardGeo = new THREE.PlaneGeometry(14, 6);
         const boardMat = new THREE.MeshStandardMaterial({ 
-            map: this.boardTexture, 
+            map: this.boardTexture,
             roughness: 0.9 
         });
+
         const board = new THREE.Mesh(boardGeo, boardMat);
-        board.position.set(0, 4, -7.9); // Attached to front wall
+
+        // front wall
+        board.position.set(0, 4, -7.9);
         this.scene.add(board);
     }
 
     drawChalkboard() {
         const ctx = this.boardCanvas.getContext('2d');
-        
-        // Blackboard background
+
         ctx.fillStyle = '#1e382b';
         ctx.fillRect(0, 0, this.boardCanvas.width, this.boardCanvas.height);
-        
-        // Wooden frame
+
+        // wooden frame
         ctx.strokeStyle = '#5c4033';
         ctx.lineWidth = 20;
         ctx.strokeRect(0, 0, this.boardCanvas.width, this.boardCanvas.height);
 
-        // Draw Quote
+        // draw quote
         ctx.font = 'bold 48px "Courier New", Courier, monospace';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        
+
         const textY = this.boardCanvas.height / 2;
         const textX = this.boardCanvas.width / 2;
 
         ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
         ctx.fillText(this.targetQuote, textX, textY);
 
-        // Draw Strikethrough
+        // draw strikethrough
         if (this.quoteProgress > 0) {
             const completedText = this.targetQuote.substring(0, this.quoteProgress);
             const fullWidth = ctx.measureText(this.targetQuote).width;
             const completedWidth = ctx.measureText(completedText).width;
-            
+
             const startX = textX - (fullWidth / 2);
-            
+
             ctx.beginPath();
             ctx.moveTo(startX - 10, textY);
             ctx.lineTo(startX + completedWidth, textY);
-            ctx.strokeStyle = '#ffcc00'; 
+            ctx.strokeStyle = '#ffcc00';
             ctx.lineWidth = 8;
             ctx.stroke();
         }
@@ -323,8 +310,9 @@ class TuringMachineGame {
             }
             this.tapeString += char;
         }
-        this.tapeString += "     "; // padding at the end so it shifts cleanly
-        
+
+        // padding at the end so it shifts cleanly
+        this.tapeString += "     ";
         this.updateCards();
     }
 
@@ -332,18 +320,15 @@ class TuringMachineGame {
         for(let i = 0; i < this.numCards; i++) {
             const charIndex = this.tapeIndex + i;
 
-            // If we run out of string, render a blank card
             const char = charIndex < this.tapeString.length ? this.tapeString[charIndex] : ' ';
             const displayChar = char === ' ' ? '␣' : char;
 
             const canvas = this.cards[i].canvas;
             const ctx = canvas.getContext('2d');
 
-            // Background
             ctx.fillStyle = '#ffffff';
             ctx.fillRect(0, 0, 128, 128);
 
-            // Text
             if (charIndex < this.tapeString.length && displayChar !== '␣') {
                 ctx.fillStyle = '#000000';
                 ctx.font = 'bold 80px monospace';
@@ -365,7 +350,6 @@ class TuringMachineGame {
         this.targetQuote = this.quotes[this.currentLevel];
         this.quoteProgress = 0;
 
-        // Difficulty scaling
         const timeMultiplier = Math.max(0.8, 2.5 - (levelIndex * 0.2));
         this.timeRemaining = this.targetQuote.length * timeMultiplier;
 
@@ -392,13 +376,11 @@ class TuringMachineGame {
     handleMouseClick(e) {
         if (this.isProcessing) return;
 
-        // Ensure pointer is locked
         if (!this.controls.isLocked) {
             this.controls.lock();
             return;
         }
 
-        // Raycast from the center of the screen (crosshair)
         this.raycaster.setFromCamera(new THREE.Vector2(0, 0), this.camera);
         const intersects = this.raycaster.intersectObject(this.submitButton);
 
@@ -418,12 +400,11 @@ class TuringMachineGame {
     submitCurrentChar() {
         const targetChar = this.targetQuote[this.quoteProgress];
         const currentCharOnTape = this.tapeString[this.tapeIndex];
-        
+
         if (currentCharOnTape === targetChar) {
             this.quoteProgress++;
-            this.highlightMat.color.setHex(0x00ffaa); 
+            this.highlightMat.color.setHex(0x00ffaa);
 
-            // Shift tape right (shifts letters left)
             if (this.tapeIndex < this.tapeString.length - 1) {
                 this.tapeIndex++;
                 this.updateCards();
@@ -435,12 +416,12 @@ class TuringMachineGame {
                 this.triggerWin();
             }
         } else {
-            this.highlightMat.color.setHex(0xff0000); 
-            this.timeRemaining -= 2.0; 
+            this.highlightMat.color.setHex(0xff0000);
+            this.timeRemaining -= 2.0;
         }
 
         setTimeout(() => {
-            this.highlightMat.color.setHex(0xffd700); 
+            this.highlightMat.color.setHex(0xffd700);
         }, 300);
     }
 
@@ -463,7 +444,7 @@ class TuringMachineGame {
         const q = winQuotes[Math.floor(Math.random() * winQuotes.length)];
 
         this.ui.showMessage(q, "String validated! Proceeding to the next level...", '#00ffaa', 3000, () => {
-            this.startLevel(this.currentLevel + 1); 
+            this.startLevel(this.currentLevel + 1);
         });
     }
 
