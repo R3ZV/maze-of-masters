@@ -1,13 +1,22 @@
-# Run locally with VR support
+# Run locally
 
-We first server the project via `python3 -m http.server` on the root project
-directory (it will serv on port `8000`).
+**1.** Open `patches/background.pd` in Pure Data and enable audio (`Media > Audio ON`).
 
-WebXR needs a secure connection so for that we are going to use `ngrok` to tunnel
-our local host to a secure web server via `ngrok http 8000`.
+**2.** Start the WebSocket / OSC bridge (requires `websockets` and `python-osc`):
+```bash
+python server.py
+```
 
-Also make sure you run a chromium based browser as they are the most reliable,
-now you can go to `https://<domain-provided-by-ngrok>/lobby` to start the game.
+**3.** Serve the project from the root directory:
+```bash
+python -m http.server 8000
+```
 
-# References
+Open `http://localhost:8000/lobby` in a Chromium-based browser.
+
+## VR support
+
+WebXR needs a secure connection — tunnel the local server with `ngrok http 8000` and open the provided `https://` URL on the headset.
+
+## References
 - https://citate-fmi.tiddlyhost.com/

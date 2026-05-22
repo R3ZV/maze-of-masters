@@ -15,10 +15,11 @@ const SCROLL_SENSITIVITY = 1; // how many units one scroll tick moves the dial
 // ─────────────────────────────────────────────
 class UIManager {
     constructor() {
+        const hint = '<div style="font-size:.9rem;color:#aaa;margin-top:32px;letter-spacing:.15em">PRESS <span style="color:#fff">R</span> TO RETRY &nbsp;·&nbsp; <span style="color:#fff">L</span> FOR LOBBY</div>';
         this.winScreen  = this._overlay('#000', '#50C878',
-            'All radios tuned!<br>The music plays on.');
+            'All radios tuned!<br>The music plays on.' + hint);
         this.loseScreen = this._overlay('#1a0000', '#FF4444',
-            'Time\'s up!<br>The static wins.');
+            'Time\'s up!<br>The static wins.' + hint);
 
         this.hud = document.createElement('div');
         Object.assign(this.hud.style, {
@@ -59,6 +60,7 @@ class UIManager {
             position: 'absolute', top: '0', left: '0',
             width: '100vw', height: '100vh',
             backgroundColor: bg, color, display: 'none',
+            flexDirection: 'column',
             alignItems: 'center', justifyContent: 'center',
             fontSize: '3rem', fontFamily: 'Arial, sans-serif',
             textAlign: 'center'
@@ -179,6 +181,47 @@ class InputManager {
 }
 
 // ─────────────────────────────────────────────
+// FootstepAudio
+// ─────────────────────────────────────────────
+class FootstepAudio {
+    constructor(camera) {
+        this.listener = new THREE.AudioListener();
+        camera.add(this.listener);
+        this.sounds = [];
+        this.stepInterval = 0.42;
+        this.timer = 0;
+        this.lastIndex = -1;
+
+        const loader = new THREE.AudioLoader();
+        for (let i = 1; i <= 6; i++) {
+            const audio = new THREE.Audio(this.listener);
+            loader.load(`assets/foot_${i}.wav`, buf => audio.setBuffer(buf));
+            this.sounds.push(audio);
+        }
+    }
+
+    _playStep() {
+        if (this.sounds.every(s => !s.buffer)) return;
+        const ready = this.sounds.filter((s, i) => s.buffer && i !== this.lastIndex);
+        if (!ready.length) return;
+        const snd = ready[Math.floor(Math.random() * ready.length)];
+        this.lastIndex = this.sounds.indexOf(snd);
+        if (snd.isPlaying) snd.stop();
+        snd.setVolume(0.6);
+        snd.play();
+    }
+
+    update(isMoving, delta) {
+        if (!isMoving) { this.timer = this.stepInterval; return; }
+        this.timer += delta;
+        if (this.timer >= this.stepInterval) {
+            this._playStep();
+            this.timer = 0;
+        }
+    }
+}
+
+// ─────────────────────────────────────────────
 // Player
 // ─────────────────────────────────────────────
 class Player {
@@ -192,10 +235,11 @@ class Player {
         this.isTuning = false; // locked to a radio
         this.collisionChecker = null; // will be set by Game
         this.collisionRadius = 0.3; // collision sphere radius
+        this.footsteps = new FootstepAudio(camera);
     }
 
-    updateMovement(keys) {
-        if (this.isTuning) return;
+    updateMovement(keys, delta) {
+        if (this.isTuning) { this.footsteps.update(false, delta); return; }
         const euler = new THREE.Euler(0, 0, 0, 'YXZ');
         euler.setFromQuaternion(this.camera.quaternion);
         const fwd   = new THREE.Vector3(0, 0, -1).applyEuler(new THREE.Euler(0, euler.y, 0));
@@ -219,6 +263,9 @@ class Player {
         if (!this.collisionChecker || !this.collisionChecker(testZOnly, this.collisionRadius)) {
             this.rig.position.z = newPos.z;
         }
+
+        const isMoving = keys.w || keys.s || keys.a || keys.d;
+        this.footsteps.update(isMoving, delta);
     }
 }
 
@@ -405,7 +452,9 @@ class Radio {
         this.staticNode.loop = true;
         this.staticGain = this.audioCtx.createGain();
         this.staticGain.gain.value = 1;
-        this.staticNode.connect(this.staticGain).connect(this.audioCtx.destination);
+        const staticMaster = this.audioCtx.createGain();
+        staticMaster.gain.value = 0.05;
+        this.staticNode.connect(this.staticGain).connect(staticMaster).connect(this.audioCtx.destination);
         this.staticNode.start();
 
         // Simple music: a little chord (root + major third + fifth)
@@ -421,8 +470,13 @@ class Radio {
             osc.connect(g).connect(this.musicGain);
             osc.start();
         });
-        this.musicGain.connect(this.audioCtx.destination);
+        const musicMaster = this.audioCtx.createGain();
+        musicMaster.gain.value = 0.25;
+        this.musicGain.connect(musicMaster).connect(this.audioCtx.destination);
     }
+
+    suspendAudio() { this.audioCtx?.suspend(); }
+    resumeAudio()  { this.audioCtx?.resume(); }
 
     stopAudio() {
         this.staticNode?.stop();
@@ -463,6 +517,15 @@ class Game {
         this.tableModel  = null; // will be loaded from assets
         this.doorModel   = null; // will be loaded from assets
         this.keypadModel = null; // will be loaded from assets
+
+        this.musicCtx = new AudioContext();
+        this.musicBuf = null;
+        this.musicSrc = null;
+        fetch('assets/mysterious.wav')
+            .then(r => r.arrayBuffer())
+            .then(b => this.musicCtx.decodeAudioData(b))
+            .then(b => { this.musicBuf = b; })
+            .catch(() => null);
 
         this.initRenderer();
         this.initScene();
@@ -509,7 +572,10 @@ class Game {
 
         this.controls = new PointerLockControls(this.camera, document.body);
         document.body.addEventListener('click', () => {
-            if (this.state === 'PLAYING') this.controls.lock();
+            if (this.state === 'PLAYING') {
+                this.controls.lock();
+                if (!this.musicSrc) this._playMusic();
+            }
         });
     }
 
@@ -672,6 +738,7 @@ class Game {
 
         // If already tuning radio, step away
         if (this.activeRadio !== null) {
+            this.activeRadio.suspendAudio();
             this.player.isTuning = false;
             this.ui.hideTuning();
             this.activeRadio = null;
@@ -704,6 +771,7 @@ class Game {
         }
         if (nearest) {
             this.activeRadio = nearest;
+            nearest.resumeAudio();
             this.player.isTuning = true;
             this.ui.showTuning(nearest);
         }
@@ -749,7 +817,7 @@ class Game {
     }
 
     update(dt) {
-        this.player.updateMovement(this.input.keys);
+        this.player.updateMovement(this.input.keys, dt);
         this.updateProximity();
         this.updateTimer(dt);
     }
@@ -777,14 +845,41 @@ class Game {
         if (this.timeLeft <= 0) this.endGame('LOST');
     }
 
+    _playMusic() {
+        this.musicCtx.resume();
+        this._stopMusic();
+        if (this.musicBuf) {
+            this.musicSrc = this.musicCtx.createBufferSource();
+            this.musicSrc.buffer = this.musicBuf;
+            this.musicSrc.loop = true;
+            const gain = this.musicCtx.createGain();
+            gain.gain.value = 1.0;
+            this.musicSrc.connect(gain).connect(this.musicCtx.destination);
+            this.musicSrc.start();
+        }
+    }
+
+    _stopMusic() {
+        if (this.musicSrc) {
+            this.musicSrc.stop();
+            this.musicSrc.disconnect();
+            this.musicSrc = null;
+        }
+    }
+
     endGame(result) {
         this.state = result;
         this.controls.unlock();
-        this.renderer.setAnimationLoop(null);
-        this.renderer.domElement.style.display = 'none';
+        this._stopMusic();
         this.radios.forEach(r => r.stopAudio());
         if (result === 'WON')  this.ui.showWin();
         if (result === 'LOST') this.ui.showLose();
+
+        window.addEventListener('keydown', e => {
+            const k = e.key.toLowerCase();
+            if (k === 'r') window.location.reload();
+            if (k === 'l') window.location.href = '/lobby';
+        }, { once: false });
     }
 
     checkCollision(pos, radius) {

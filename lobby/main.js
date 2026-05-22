@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 import { VRButton } from 'three/addons/webxr/VRButton.js';
-
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 class UIManager {
     constructor() {
         this.crosshair = document.createElement('div');
@@ -37,19 +37,58 @@ class InputManager {
     }
 }
 
+class FootstepAudio {
+    constructor(camera) {
+        this.listener = new THREE.AudioListener();
+        camera.add(this.listener);
+        this.sounds = [];
+        this.stepInterval = 0.42;
+        this.timer = 0;
+        this.lastIndex = -1;
+
+        const loader = new THREE.AudioLoader();
+        for (let i = 1; i <= 6; i++) {
+            const audio = new THREE.Audio(this.listener);
+            loader.load(`assets/foot_${i}.wav`, buf => audio.setBuffer(buf));
+            this.sounds.push(audio);
+        }
+    }
+
+    _playStep() {
+        if (this.sounds.every(s => !s.buffer)) return;
+        const ready = this.sounds.filter((s, i) => s.buffer && i !== this.lastIndex);
+        if (!ready.length) return;
+        const snd = ready[Math.floor(Math.random() * ready.length)];
+        this.lastIndex = this.sounds.indexOf(snd);
+        if (snd.isPlaying) snd.stop();
+        snd.setVolume(0.6);
+        snd.play();
+    }
+
+    update(isMoving, delta) {
+        if (!isMoving) { this.timer = this.stepInterval; return; }
+        this.timer += delta;
+        if (this.timer >= this.stepInterval) {
+            this._playStep();
+            this.timer = 0;
+        }
+    }
+}
+
 class Player {
     constructor(camera) {
         this.rig = new THREE.Group();
-        this.rig.position.set(0, 0, 0); 
+        this.rig.position.set(0, 0, 0);
         this.rig.add(camera);
         this.camera = camera;
         this.desktopHeight = 1.6;
         this.camera.position.y = this.desktopHeight;
         this.speed = 0.08;
-        this.radius = 0.5; 
+        this.radius = 0.5;
+        this.footsteps = new FootstepAudio(camera);
     }
 
-    updateMovement(keys, walls, renderer) {
+    updateMovement(keys, walls, renderer, delta) {
         const euler = new THREE.Euler(0, 0, 0, 'YXZ');
         euler.setFromQuaternion(this.camera.quaternion);
         const direction = new THREE.Vector3(0, 0, -1).applyEuler(new THREE.Euler(0, euler.y, 0)).normalize();
@@ -77,18 +116,21 @@ class Player {
             this.camera.position.y = this.desktopHeight;
         }
 
-        if (moveVec.lengthSq() > 0) {
+        const isMoving = moveVec.lengthSq() > 0;
+        if (isMoving) {
             moveVec.normalize().multiplyScalar(this.speed);
             this.rig.position.x += moveVec.x;
             if (this.checkCollisions(walls)) {
-                this.rig.position.x -= moveVec.x; 
+                this.rig.position.x -= moveVec.x;
             }
 
             this.rig.position.z += moveVec.z;
             if (this.checkCollisions(walls)) {
-                this.rig.position.z -= moveVec.z; 
+                this.rig.position.z -= moveVec.z;
             }
         }
+
+        this.footsteps.update(isMoving, delta);
     }
 
     checkCollisions(walls) {
@@ -111,7 +153,8 @@ class Game {
         this.walls = [];
         this.npcs = [];
         this.hoveredNPC = null;
-
+        this.audioSocket = new WebPdSocket("ws://localhost:8765");
+        this.volume = 0.13;
         this.initRenderer();
         this.initScene();
         this.initVRControllers();
@@ -127,6 +170,14 @@ class Game {
         ];
         this.buildMaze(layout);
 
+        this.audioSocket.listen()
+            .then(() => this.audioSocket.send('lobbyVolume', this.volume))
+            .catch(err => console.error("[Audio] init failed:", err));
+
+        window.addEventListener('beforeunload', () => {
+            this.audioSocket.send('lobbyVolume', 0);
+        });
+        
         this.renderer.setAnimationLoop(() => this.tick());
     }
 
@@ -211,7 +262,28 @@ class Game {
             default: return { name: 'unknown',              url: '#' };
         }
     }
-
+    getModelById(id){
+        switch(id) {
+            case 'A': return "/lobby/models/dragan.glb";
+            case 'B': return "/lobby/models/sipos.glb";
+            case 'C': return "/lobby/models/irofti.glb";
+            case 'D': return "/lobby/models/rusu.glb";
+            case 'E': return "/lobby/models/paun.glb";
+            case "F": return "/lobby/models/chirita.glb";
+            default: return "#";
+        }
+    }
+    getRotationById(id){
+        switch(id) {
+            case 'A': return 0;
+            case 'B': return Math.PI/2;
+            case 'C': return Math.PI/2;
+            case 'D': return -3*Math.PI/4;
+            case 'E': return -Math.PI/4;
+            case "F": return 0;
+            default: return "#";
+        }
+    }
     buildMaze(matrix) {
         const cellSize = 4;
         const wallHeight = 4;
@@ -250,34 +322,49 @@ class Game {
 
     spawnNPC(id, x, z) {
         const group = new THREE.Group();
-        const bodyGeo = new THREE.CylinderGeometry(0.5, 0.5, 1.6);
-        const bodyMat = new THREE.MeshStandardMaterial({ color: Math.random() * 0xffffff });
-        const body = new THREE.Mesh(bodyGeo, bodyMat);
-        body.position.y = 0.8;
-        group.add(body);
+        const loader = new GLTFLoader();
+        const modelPath = this.getModelById(id);
 
+        const TARGET_HEIGHT = 1.8;
+        loader.load(modelPath, (glb) => {
+            const model = glb.scene;
+            
+            model.updateMatrixWorld(true);
+
+            const box = new THREE.Box3().setFromObject(model);
+            const naturalHeight = box.max.y - box.min.y;
+            const scale = TARGET_HEIGHT / naturalHeight;
+            model.scale.setScalar(scale);
+
+            const scaledBox = new THREE.Box3().setFromObject(model);
+            model.position.y -= scaledBox.min.y;
+            model.rotation.y += this.getRotationById(id);
+            group.add(model);
+        });
+        group.position.set(x, 0, z);
+        this.scene.add(group);
+        
         const gameData = this.getGameData(id);
         const text = this.createTextSprite(`[E]: Enter ${gameData.name}`);
         text.position.set(0, 2.2, 0);
         text.visible = false;
         group.add(text);
 
-        group.position.set(x, 0, z);
-        this.scene.add(group);
-
-        this.npcs.push({ id: id, data: gameData, mesh: group, sprite: text, position: new THREE.Vector3(x, 0, z) });
+        this.npcs.push({ id, data: gameData, mesh: group, sprite: text, position: new THREE.Vector3(x, 0, z) });
     }
 
     handleInteraction() {
         if (!this.hoveredNPC) return;
         if (this.hoveredNPC.data.url !== '#') {
+            this.audioSocket.send('lobbyVolume', 0);
             window.location.href = this.hoveredNPC.data.url;
         }
     }
 
     tick() {
+        const delta = this.clock.getDelta();
         if (this.controls.isLocked || this.renderer.xr.isPresenting) {
-            this.player.updateMovement(this.input.keys, this.walls, this.renderer);
+            this.player.updateMovement(this.input.keys, this.walls, this.renderer, delta);
 
             this.hoveredNPC = null;
             let closestDist = 3.0;
@@ -296,6 +383,7 @@ class Game {
             if (this.hoveredNPC) {
                 this.hoveredNPC.sprite.visible = true;
             }
+            this.audioSocket.send('lobbyVolume', this.volume);
         }
 
         this.renderer.render(this.scene, this.camera);

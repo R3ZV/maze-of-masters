@@ -5,8 +5,9 @@ import { PointerLockControls } from 'three/addons/controls/PointerLockControls.j
 
 class UIManager {
     constructor() {
-        this.winScreen = this.createOverlay('#000000', '#50C878', 'You escaped the dragon lair,<br>without destroying the equipment!');
-        this.loseScreen = this.createOverlay('#220000', '#FF4444', 'THE DRAGON SPOTTED YOU!<br>Game Over.');
+        const hint = '<div style="font-size:.9rem;color:#aaa;margin-top:32px;letter-spacing:.15em">PRESS <span style="color:#fff">R</span> TO RETRY &nbsp;·&nbsp; <span style="color:#fff">L</span> FOR LOBBY</div>';
+        this.winScreen  = this.createOverlay('#000000', '#50C878', 'You escaped the dragon lair,<br>without destroying the equipment!' + hint);
+        this.loseScreen = this.createOverlay('#220000', '#FF4444', 'THE DRAGON SPOTTED YOU!<br>Game Over.' + hint);
         this.hud = document.createElement('div');
         this.hud.style.position = 'absolute';
         this.hud.style.top = '20px'; this.hud.style.width = '100vw';
@@ -23,8 +24,9 @@ class UIManager {
         div.style.top = '0'; div.style.left = '0';
         div.style.width = '100vw'; div.style.height = '100vh';
         div.style.backgroundColor = bgColor; div.style.color = textColor;
-        div.style.display = 'none'; div.style.alignItems = 'center';
-        div.style.justifyContent = 'center'; div.style.fontSize = '3rem';
+        div.style.display = 'none'; div.style.flexDirection = 'column';
+        div.style.alignItems = 'center'; div.style.justifyContent = 'center';
+        div.style.fontSize = '3rem';
         div.style.fontFamily = 'Arial, sans-serif'; div.style.textAlign = 'center';
         div.innerHTML = text;
         document.body.appendChild(div);
@@ -68,6 +70,44 @@ class InputManager {
     }
 }
 
+class FootstepAudio {
+    constructor(camera) {
+        this.listener = new THREE.AudioListener();
+        camera.add(this.listener);
+        this.sounds = [];
+        this.stepInterval = 0.42;
+        this.timer = 0;
+        this.lastIndex = -1;
+
+        const loader = new THREE.AudioLoader();
+        for (let i = 1; i <= 6; i++) {
+            const audio = new THREE.Audio(this.listener);
+            loader.load(`assets/foot_${i}.wav`, buf => audio.setBuffer(buf));
+            this.sounds.push(audio);
+        }
+    }
+
+    _playStep() {
+        if (this.sounds.every(s => !s.buffer)) return;
+        const ready = this.sounds.filter((s, i) => s.buffer && i !== this.lastIndex);
+        if (!ready.length) return;
+        const snd = ready[Math.floor(Math.random() * ready.length)];
+        this.lastIndex = this.sounds.indexOf(snd);
+        if (snd.isPlaying) snd.stop();
+        snd.setVolume(0.6);
+        snd.play();
+    }
+
+    update(isMoving, delta) {
+        if (!isMoving) { this.timer = this.stepInterval; return; }
+        this.timer += delta;
+        if (this.timer >= this.stepInterval) {
+            this._playStep();
+            this.timer = 0;
+        }
+    }
+}
+
 class Player {
     constructor(camera) {
         this.state = { onChair: false };
@@ -82,6 +122,7 @@ class Player {
 
         this.speed = 0.12;
         this.currentChairPos = new THREE.Vector3();
+        this.footsteps = new FootstepAudio(camera);
     }
 
     sitDown(chairWorldPos) {
@@ -98,8 +139,8 @@ class Player {
         this.camera.position.y = this.standingHeight;
     }
 
-    updateMovement(keys) {
-        if (this.state.onChair) return;
+    updateMovement(keys, delta) {
+        if (this.state.onChair) { this.footsteps.update(false, delta); return; }
 
         const euler = new THREE.Euler(0, 0, 0, 'YXZ');
         euler.setFromQuaternion(this.camera.quaternion);
@@ -110,6 +151,9 @@ class Player {
         if (keys.s) this.rig.position.addScaledVector(direction, -this.speed);
         if (keys.a) this.rig.position.addScaledVector(right, -this.speed);
         if (keys.d) this.rig.position.addScaledVector(right, this.speed);
+
+        const isMoving = keys.w || keys.s || keys.a || keys.d;
+        this.footsteps.update(isMoving, delta);
     }
 }
 
@@ -128,10 +172,25 @@ class Game {
         this.door = null;
         this.doorText = null;
 
+        this.musicCtx = new AudioContext();
+        this.musicBuf = null;
+        this.musicSrc = null;
+        fetch('assets/horror.wav')
+            .then(r => r.arrayBuffer())
+            .then(b => this.musicCtx.decodeAudioData(b))
+            .then(b => { this.musicBuf = b; })
+            .catch(() => null);
+
         this.initRenderer();
         this.initScene();
         this.buildWorld();
         this.loadAssets();
+
+        window.addEventListener('keydown', e => {
+            const k = e.key.toLowerCase();
+            if (k === 'r' && (this.state === 'WON' || this.state === 'LOST')) this.restart();
+            if (k === 'l' && (this.state === 'WON' || this.state === 'LOST')) window.location.href = '/lobby';
+        });
 
         this.renderer.setAnimationLoop(() => this.tick());
     }
@@ -174,7 +233,10 @@ class Game {
 
         this.controls = new PointerLockControls(this.camera, document.body);
         document.body.addEventListener('click', () => {
-            if (this.state === 'PLAYING') this.controls.lock();
+            if (this.state === 'PLAYING') {
+                this.controls.lock();
+                if (!this.musicSrc) this._playMusic();
+            }
         });
     }
 
@@ -302,7 +364,7 @@ class Game {
     }
 
     update(dt) {
-        this.player.updateMovement(this.input.keys);
+        this.player.updateMovement(this.input.keys, dt);
         this.updateUIProximity();
         this.updateDragonLogic(dt);
     }
@@ -354,15 +416,49 @@ class Game {
         this.renderer.render(this.scene, this.camera);
     }
 
+    _playMusic() {
+        this.musicCtx.resume();
+        this._stopMusic();
+        if (this.musicBuf) {
+            this.musicSrc = this.musicCtx.createBufferSource();
+            this.musicSrc.buffer = this.musicBuf;
+            this.musicSrc.loop = true;
+            const gain = this.musicCtx.createGain();
+            gain.gain.value = 0.4; // ← change volume here (0.0 – 1.0)
+            this.musicSrc.connect(gain).connect(this.musicCtx.destination);
+            this.musicSrc.start();
+        }
+    }
+
+    _stopMusic() {
+        if (this.musicSrc) {
+            this.musicSrc.stop();
+            this.musicSrc.disconnect();
+            this.musicSrc = null;
+        }
+    }
+
     endGame(result) {
         this.state = result;
         this.controls.unlock();
-        this.renderer.setAnimationLoop(null);
-        this.renderer.domElement.style.display = 'none';
-        this.vrButton.style.display = 'none';
-
+        this._stopMusic();
         if (result === 'WON') this.ui.showWin();
         if (result === 'LOST') this.ui.showLose();
+    }
+
+    restart() {
+        this.ui.winScreen.style.display  = 'none';
+        this.ui.loseScreen.style.display = 'none';
+        this.ui.hud.style.display        = '';
+        this.player.rig.position.set(0, 0, 30);
+        this.player.state.onChair        = false;
+        this.player.camera.position.y    = this.player.standingHeight;
+        this.cycleTime    = 0;
+        this.safeDuration = this.getRandomSafeTime();
+        this.scene.background.setHex(0xD3D3D3);
+        this.scene.fog.color.setHex(0xD3D3D3);
+        this.state = 'PLAYING';
+        this._playMusic();
     }
 }
 
