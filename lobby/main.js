@@ -1,8 +1,7 @@
 import * as THREE from 'three';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 import { VRButton } from 'three/addons/webxr/VRButton.js';
-import { WebPdSocket } from '../music/interface.js';
-
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 class UIManager {
     constructor() {
         this.crosshair = document.createElement('div');
@@ -263,7 +262,28 @@ class Game {
             default: return { name: 'unknown',              url: '#' };
         }
     }
-
+    getModelById(id){
+        switch(id) {
+            case 'A': return "/lobby/models/dragan.glb";
+            case 'B': return "/lobby/models/sipos.glb";
+            case 'C': return "/lobby/models/irofti.glb";
+            case 'D': return "/lobby/models/rusu.glb";
+            case 'E': return "/lobby/models/paun.glb";
+            case "F": return "/lobby/models/chirita.glb";
+            default: return "#";
+        }
+    }
+    getRotationById(id){
+        switch(id) {
+            case 'A': return 0;
+            case 'B': return Math.PI/2;
+            case 'C': return Math.PI/2;
+            case 'D': return -3*Math.PI/4;
+            case 'E': return -Math.PI/4;
+            case "F": return 0;
+            default: return "#";
+        }
+    }
     buildMaze(matrix) {
         const cellSize = 4;
         const wallHeight = 4;
@@ -302,22 +322,35 @@ class Game {
 
     spawnNPC(id, x, z) {
         const group = new THREE.Group();
-        const bodyGeo = new THREE.CylinderGeometry(0.5, 0.5, 1.6);
-        const bodyMat = new THREE.MeshStandardMaterial({ color: Math.random() * 0xffffff });
-        const body = new THREE.Mesh(bodyGeo, bodyMat);
-        body.position.y = 0.8;
-        group.add(body);
+        const loader = new GLTFLoader();
+        const modelPath = this.getModelById(id);
 
+        const TARGET_HEIGHT = 1.8;
+        loader.load(modelPath, (glb) => {
+            const model = glb.scene;
+            
+            model.updateMatrixWorld(true);
+
+            const box = new THREE.Box3().setFromObject(model);
+            const naturalHeight = box.max.y - box.min.y;
+            const scale = TARGET_HEIGHT / naturalHeight;
+            model.scale.setScalar(scale);
+
+            const scaledBox = new THREE.Box3().setFromObject(model);
+            model.position.y -= scaledBox.min.y;
+            model.rotation.y += this.getRotationById(id);
+            group.add(model);
+        });
+        group.position.set(x, 0, z);
+        this.scene.add(group);
+        
         const gameData = this.getGameData(id);
         const text = this.createTextSprite(`[E]: Enter ${gameData.name}`);
         text.position.set(0, 2.2, 0);
         text.visible = false;
         group.add(text);
 
-        group.position.set(x, 0, z);
-        this.scene.add(group);
-
-        this.npcs.push({ id: id, data: gameData, mesh: group, sprite: text, position: new THREE.Vector3(x, 0, z) });
+        this.npcs.push({ id, data: gameData, mesh: group, sprite: text, position: new THREE.Vector3(x, 0, z) });
     }
 
     handleInteraction() {
