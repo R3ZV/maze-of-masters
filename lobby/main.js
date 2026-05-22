@@ -117,21 +117,13 @@ class Game {
         this.initVRControllers();
 
         const layout = [
-            "###############",
-            "#A....#.F.#..B#",
-            "#####.#.#.#.###",
-            "#.....#.#.....#",
-            "#.#####.#####.#",
-            "#.#...#...#...#",
-            "#.#.#.###.#.###",
-            "#...#.....#...#",
-            "###.#.#######.#",
-            "#E..#.#.......#",
-            "#.###.#.#####.#",
-            "#.#...#...#...#",
-            "#.#.#####.#.###",
-            "#C......#....D#",
-            "###############"
+            "#############",
+            "#A..#.F.#..B#",
+            "#.........###",
+            "###..#####.E#",
+            "#...........#",
+            "#C....#....D#",
+            "#############"
         ];
         this.buildMaze(layout);
 
@@ -214,8 +206,8 @@ class Game {
             case 'B': return { name: 'Match the Sipos',     url: '/mini-games/cards' };
             case 'C': return { name: `Paul's shop`,         url: '/mini-games/paul' };
             case 'D': return { name: `Rusu's radio`,        url: '/mini-games/signals' };
-            case 'E': return { name: `Paun's room`,         url: '/mini-games/paul' };
-            case 'F': return { name: `Chirita's rocket`,    url: '/mini-games/rocket' };
+            case 'E': return { name: `Paun's room`,         url: '/mini-games/bird' };
+            case 'F': return { name: `Chirita's rocket`,    url: '/mini-games/space' };
             default: return { name: 'unknown',              url: '#' };
         }
     }
@@ -253,7 +245,7 @@ class Game {
             }
         }
 
-        this.player.rig.position.set(0, 0, 0);
+        this.player.rig.position.set(0, 0, 4);
     }
 
     spawnNPC(id, x, z) {
