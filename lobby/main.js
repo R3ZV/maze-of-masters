@@ -118,7 +118,7 @@ class Game {
 
         const layout = [
             "###############",
-            "#A....#...#..B#",
+            "#A....#.F.#..B#",
             "#####.#.#.#.###",
             "#.....#.#.....#",
             "#.#####.#####.#",
@@ -210,12 +210,13 @@ class Game {
 
     getGameData(id) {
         switch(id) {
-            case 'A': return { name: `Dragon's lair`, url: '/mini-games/dragon' };
-            case 'B': return { name: 'Match the Sipos', url: '/mini-games/cards' };
-            case 'C': return { name: `Paul's shop`, url: '/mini-games/paul' };
-            case 'D': return { name: `Rusu's radio` , url: '#' };
-            case 'E': return { name: `Paun`, url: '#' };
-            default: return { name: 'unknown', url: '#' };
+            case 'A': return { name: `Dragon's lair`,       url: '/mini-games/dragon' };
+            case 'B': return { name: 'Match the Sipos',     url: '/mini-games/cards' };
+            case 'C': return { name: `Paul's shop`,         url: '/mini-games/paul' };
+            case 'D': return { name: `Rusu's radio`,        url: '/mini-games/signals' };
+            case 'E': return { name: `Paun's room`,         url: '/mini-games/paul' };
+            case 'F': return { name: `Chirita's rocket`,    url: '/mini-games/rocket' };
+            default: return { name: 'unknown',              url: '#' };
         }
     }
 
