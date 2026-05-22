@@ -450,7 +450,9 @@ class Radio {
         this.staticNode.loop = true;
         this.staticGain = this.audioCtx.createGain();
         this.staticGain.gain.value = 1;
-        this.staticNode.connect(this.staticGain).connect(this.audioCtx.destination);
+        const staticMaster = this.audioCtx.createGain();
+        staticMaster.gain.value = 0.05;
+        this.staticNode.connect(this.staticGain).connect(staticMaster).connect(this.audioCtx.destination);
         this.staticNode.start();
 
         // Simple music: a little chord (root + major third + fifth)
@@ -466,8 +468,13 @@ class Radio {
             osc.connect(g).connect(this.musicGain);
             osc.start();
         });
-        this.musicGain.connect(this.audioCtx.destination);
+        const musicMaster = this.audioCtx.createGain();
+        musicMaster.gain.value = 0.25;
+        this.musicGain.connect(musicMaster).connect(this.audioCtx.destination);
     }
+
+    suspendAudio() { this.audioCtx?.suspend(); }
+    resumeAudio()  { this.audioCtx?.resume(); }
 
     stopAudio() {
         this.staticNode?.stop();
@@ -717,6 +724,7 @@ class Game {
 
         // If already tuning radio, step away
         if (this.activeRadio !== null) {
+            this.activeRadio.suspendAudio();
             this.player.isTuning = false;
             this.ui.hideTuning();
             this.activeRadio = null;
@@ -749,6 +757,7 @@ class Game {
         }
         if (nearest) {
             this.activeRadio = nearest;
+            nearest.resumeAudio();
             this.player.isTuning = true;
             this.ui.showTuning(nearest);
         }
