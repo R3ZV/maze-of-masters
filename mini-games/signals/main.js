@@ -518,6 +518,15 @@ class Game {
         this.doorModel   = null; // will be loaded from assets
         this.keypadModel = null; // will be loaded from assets
 
+        this.musicCtx = new AudioContext();
+        this.musicBuf = null;
+        this.musicSrc = null;
+        fetch('assets/mysterious.wav')
+            .then(r => r.arrayBuffer())
+            .then(b => this.musicCtx.decodeAudioData(b))
+            .then(b => { this.musicBuf = b; })
+            .catch(() => null);
+
         this.initRenderer();
         this.initScene();
         this.buildWorld();
@@ -563,7 +572,10 @@ class Game {
 
         this.controls = new PointerLockControls(this.camera, document.body);
         document.body.addEventListener('click', () => {
-            if (this.state === 'PLAYING') this.controls.lock();
+            if (this.state === 'PLAYING') {
+                this.controls.lock();
+                if (!this.musicSrc) this._playMusic();
+            }
         });
     }
 
@@ -833,9 +845,32 @@ class Game {
         if (this.timeLeft <= 0) this.endGame('LOST');
     }
 
+    _playMusic() {
+        this.musicCtx.resume();
+        this._stopMusic();
+        if (this.musicBuf) {
+            this.musicSrc = this.musicCtx.createBufferSource();
+            this.musicSrc.buffer = this.musicBuf;
+            this.musicSrc.loop = true;
+            const gain = this.musicCtx.createGain();
+            gain.gain.value = 1.0;
+            this.musicSrc.connect(gain).connect(this.musicCtx.destination);
+            this.musicSrc.start();
+        }
+    }
+
+    _stopMusic() {
+        if (this.musicSrc) {
+            this.musicSrc.stop();
+            this.musicSrc.disconnect();
+            this.musicSrc = null;
+        }
+    }
+
     endGame(result) {
         this.state = result;
         this.controls.unlock();
+        this._stopMusic();
         this.radios.forEach(r => r.stopAudio());
         if (result === 'WON')  this.ui.showWin();
         if (result === 'LOST') this.ui.showLose();

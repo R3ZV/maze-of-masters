@@ -172,6 +172,15 @@ class Game {
         this.door = null;
         this.doorText = null;
 
+        this.musicCtx = new AudioContext();
+        this.musicBuf = null;
+        this.musicSrc = null;
+        fetch('assets/horror.wav')
+            .then(r => r.arrayBuffer())
+            .then(b => this.musicCtx.decodeAudioData(b))
+            .then(b => { this.musicBuf = b; })
+            .catch(() => null);
+
         this.initRenderer();
         this.initScene();
         this.buildWorld();
@@ -224,7 +233,10 @@ class Game {
 
         this.controls = new PointerLockControls(this.camera, document.body);
         document.body.addEventListener('click', () => {
-            if (this.state === 'PLAYING') this.controls.lock();
+            if (this.state === 'PLAYING') {
+                this.controls.lock();
+                if (!this.musicSrc) this._playMusic();
+            }
         });
     }
 
@@ -404,9 +416,32 @@ class Game {
         this.renderer.render(this.scene, this.camera);
     }
 
+    _playMusic() {
+        this.musicCtx.resume();
+        this._stopMusic();
+        if (this.musicBuf) {
+            this.musicSrc = this.musicCtx.createBufferSource();
+            this.musicSrc.buffer = this.musicBuf;
+            this.musicSrc.loop = true;
+            const gain = this.musicCtx.createGain();
+            gain.gain.value = 0.4; // ← change volume here (0.0 – 1.0)
+            this.musicSrc.connect(gain).connect(this.musicCtx.destination);
+            this.musicSrc.start();
+        }
+    }
+
+    _stopMusic() {
+        if (this.musicSrc) {
+            this.musicSrc.stop();
+            this.musicSrc.disconnect();
+            this.musicSrc = null;
+        }
+    }
+
     endGame(result) {
         this.state = result;
         this.controls.unlock();
+        this._stopMusic();
         if (result === 'WON') this.ui.showWin();
         if (result === 'LOST') this.ui.showLose();
     }
@@ -423,6 +458,7 @@ class Game {
         this.scene.background.setHex(0xD3D3D3);
         this.scene.fog.color.setHex(0xD3D3D3);
         this.state = 'PLAYING';
+        this._playMusic();
     }
 }
 
