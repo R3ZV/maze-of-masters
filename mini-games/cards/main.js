@@ -1,9 +1,15 @@
 import * as THREE from 'three';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
+import {
+    ROUND_CONFIGS, SYMBOL_NAMES, COLOR_TYPES,
+    SYMBOL_SOUNDS, RANDOM_MATCH_SOUNDS,
+    START_OF_ROUND_SOUNDS, END_OF_ROUND_SOUNDS,
+} from './config.js';
 
 class UIManager {
     constructor() {
         this.loseScreen = this.createOverlay('#220000', '#FF4444', 'OUT OF LIVES.<br>Redirecting to lobby...');
+        this.winScreen = this.createOverlay('#002200', '#44FF44', 'YOU WIN!<br>Redirecting to lobby...');
         this.hud = document.createElement('div');
         this.hud.style.position = 'absolute';
         this.hud.style.top = '20px'; this.hud.style.width = '100vw';
@@ -42,23 +48,29 @@ class UIManager {
         this.hud.innerHTML = `${status}<br><span style="font-size: 1.5rem;">Lives: ${hearts}</span>`;
     }
 
-    showLose() { 
-        this.hud.style.display = 'none'; 
-        this.crosshair.style.display = 'none'; 
-        this.loseScreen.style.display = 'flex'; 
+    showLose() {
+        this.hud.style.display = 'none';
+        this.crosshair.style.display = 'none';
+        this.loseScreen.style.display = 'flex';
+    }
+
+    showWin() {
+        this.hud.style.display = 'none';
+        this.crosshair.style.display = 'none';
+        this.winScreen.style.display = 'flex';
     }
 }
 
 class Card {
-    constructor(id, type, colorHex, x, z) {
+    constructor(id, type, texture, x, z) {
         this.id = id;
         this.type = type;
-        this.isFaceUp = true; 
+        this.isFaceUp = true;
         this.isMatched = false;
 
         const edgeMat = new THREE.MeshStandardMaterial({ color: 0xffffff });
         const backMat = new THREE.MeshStandardMaterial({ color: 0x444444 });
-        const frontMat = new THREE.MeshStandardMaterial({ color: colorHex });
+        const frontMat = new THREE.MeshStandardMaterial({ map: texture, color: 0xffffff });
 
         const materials = [edgeMat, edgeMat, frontMat, backMat, edgeMat, edgeMat];
         const geometry = new THREE.BoxGeometry(0.6, 0.05, 0.8);
@@ -67,14 +79,14 @@ class Card {
         this.mesh.position.set(x, 1.05, z);
         this.mesh.userData = { cardObject: this };
 
-        this.targetRotationZ = 0; 
+        this.targetRotationZ = 0;
         this.targetPositionY = 1.05;
     }
 
     flipDown() {
         if (this.isMatched) return;
         this.isFaceUp = false;
-        this.targetRotationZ = Math.PI; 
+        this.targetRotationZ = Math.PI;
     }
 
     flipUp() {
@@ -86,7 +98,7 @@ class Card {
         if (this.isMatched || this.isFaceUp) {
             this.targetPositionY = 1.05;
         } else {
-            this.targetPositionY = isHovered ? 1.15 : 1.05; 
+            this.targetPositionY = isHovered ? 1.15 : 1.05;
         }
     }
 
@@ -101,9 +113,13 @@ class Game {
         this.clock = new THREE.Clock();
         this.ui = new UIManager();
 
-        this.currentRound = 1;
+        this.roundIndex = 0;
         this.memorizeDuration = 5.0;
         this.maxLives = 3;
+
+        const shuffle = arr => [...arr].sort(() => Math.random() - 0.5);
+        this.startSounds = shuffle(START_OF_ROUND_SOUNDS);
+        this.endSounds   = shuffle(END_OF_ROUND_SOUNDS);
 
         this.cards = [];
         this.selectedCards = [];
@@ -130,9 +146,15 @@ class Game {
         this.state = 'MEMORIZE';
         this.lives = this.maxLives;
         this.pairsFound = 0;
+        this.pairsNeeded = ROUND_CONFIGS[this.roundIndex].pairs;
         this.memorizeTimer = this.memorizeDuration;
         this.checkTimer = 0;
 
+        if (this.roundIndex === 0) {
+            this.pendingStartSound = this.startSounds[0];
+        } else {
+            this.playSound('start_of_round', this.startSounds[this.roundIndex]);
+        }
         this.buildCards();
     }
 
@@ -170,6 +192,12 @@ class Game {
         document.body.addEventListener('click', () => {
             if (this.state !== 'LOST') this.controls.lock();
         });
+        this.controls.addEventListener('lock', () => {
+            if (this.pendingStartSound) {
+                this.playSound('start_of_round', this.pendingStartSound);
+                this.pendingStartSound = null;
+            }
+        });
         this.raycaster = new THREE.Raycaster();
     }
 
@@ -183,35 +211,63 @@ class Game {
         this.scene.add(table);
     }
 
-    buildCards() {
-        const types = [
-            { id: 'red', hex: 0xff4444 }, { id: 'red', hex: 0xff4444 },
-            { id: 'blue', hex: 0x4444ff }, { id: 'blue', hex: 0x4444ff },
-            { id: 'green', hex: 0x44ff44 }, { id: 'green', hex: 0x44ff44 },
-            { id: 'yellow', hex: 0xffff44 }, { id: 'yellow', hex: 0xffff44 },
-            { id: 'purple', hex: 0xaa44ff }, { id: 'purple', hex: 0xaa44ff },
-            { id: 'cyan', hex: 0x44ffff }, { id: 'cyan', hex: 0x44ffff },
-            { id: 'trap', hex: 0x000000 } 
-        ];
+    playSound(subdir, filename) {
+        const path = subdir
+            ? `/cristi_samples/${subdir}/${encodeURIComponent(filename)}`
+            : `/cristi_samples/${encodeURIComponent(filename)}`;
+        new Audio(path).play().catch(() => { });
+    }
 
-        for (let i = types.length - 1; i > 0; i--) {
+    playMatchSound(symbol) {
+        if (SYMBOL_SOUNDS.has(symbol)) {
+            this.playSound('', `${symbol}.wav`);
+        } else if (Math.random() < 0.5) {
+            const file = RANDOM_MATCH_SOUNDS[Math.floor(Math.random() * RANDOM_MATCH_SOUNDS.length)];
+            this.playSound('', file);
+        }
+    }
+
+    buildCardTexture(colorHex, svgName) {
+        const size = 256;
+        const canvas = document.createElement('canvas');
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d');
+
+        const hex = '#' + colorHex.toString(16).padStart(6, '0');
+        ctx.fillStyle = hex;
+        ctx.fillRect(0, 0, size, size);
+
+        const texture = new THREE.CanvasTexture(canvas);
+
+        const img = new Image();
+        img.onload = () => {
+            ctx.drawImage(img, 16, 16, size - 32, size - 32);
+            texture.needsUpdate = true;
+        };
+        img.src = `/symbols/${svgName}.svg`;
+
+        return texture;
+    }
+
+    buildCards() {
+        const config = ROUND_CONFIGS[this.roundIndex];
+
+        const shuffledSymbols = [...SYMBOL_NAMES].sort(() => Math.random() - 0.5);
+        const chosenSymbols = shuffledSymbols.slice(0, config.pairs);
+        const colors = COLOR_TYPES.slice(0, config.pairs);
+
+        const pairEntries = chosenSymbols.map((symbol, i) => ({ symbol, colorHex: colors[i].hex }));
+        const pairs = [...pairEntries, ...pairEntries];
+        for (let i = pairs.length - 1; i > 0; i--) {
             const j = Math.floor(Math.random() * (i + 1));
-            [types[i], types[j]] = [types[j], types[i]];
+            [pairs[i], pairs[j]] = [pairs[j], pairs[i]];
         }
 
-        // Diamond/Hex layout for 13 cards to fit the table elegantly
-        const positions = [
-            // Top Row (4 cards)
-            [-1.2, -1.0], [-0.4, -1.0], [0.4, -1.0], [1.2, -1.0],
-            // Middle Row (5 cards)
-            [-1.6, 0.0], [-0.8, 0.0], [0.0, 0.0], [0.8, 0.0], [1.6, 0.0],
-            // Bottom Row (4 cards)
-            [-1.2, 1.0], [-0.4, 1.0], [0.4, 1.0], [1.2, 1.0]
-        ];
-
-        positions.forEach((pos, index) => {
-            const cardData = types[index];
-            const card = new Card(index, cardData.id, cardData.hex, pos[0], pos[1]);
+        config.positions.forEach((pos, index) => {
+            const { symbol, colorHex } = pairs[index];
+            const texture = this.buildCardTexture(colorHex, symbol);
+            const card = new Card(index, symbol, texture, pos[0], pos[1]);
             this.cards.push(card);
             this.scene.add(card.mesh);
         });
@@ -224,22 +280,17 @@ class Game {
         this.hoveredCard.flipUp();
         this.selectedCards.push(this.hoveredCard);
 
-        if (this.hoveredCard.type === 'trap') {
-            this.handleMistake();
-            this.state = 'CHECKING';
-            this.checkTimer = 1.0; 
-            return;
-        }
-
         if (this.selectedCards.length === 2) {
             this.state = 'CHECKING';
-            this.checkTimer = 1.0;
+            this.checkTimer = 2.0;
+            const [card1, card2] = this.selectedCards;
+            if (card1.type === card2.type) this.playMatchSound(card1.type);
         }
     }
 
     handleMistake() {
         this.lives--;
-        this.scene.background.setHex(0x550000); 
+        this.scene.background.setHex(0x550000);
         setTimeout(() => this.scene.background.setHex(0x202030), 200);
 
         if (this.lives <= 0) {
@@ -248,22 +299,21 @@ class Game {
     }
 
     resolveCheck() {
-        const card1 = this.selectedCards[0];
-        const card2 = this.selectedCards[1];
+        const [card1, card2] = this.selectedCards;
 
-        if (card2 && card1.type === card2.type) {
+        if (card1.type === card2.type) {
             card1.isMatched = true;
             card2.isMatched = true;
             this.pairsFound++;
-            if (this.pairsFound >= 6) {
+            if (this.pairsFound >= this.pairsNeeded) {
                 this.triggerRoundWin();
                 return;
             }
         } else {
-            if (card2) this.handleMistake(); 
+            this.handleMistake();
             if (this.lives > 0) {
                 card1.flipDown();
-                if (card2) card2.flipDown();
+                card2.flipDown();
             }
         }
 
@@ -275,22 +325,25 @@ class Game {
 
     triggerRoundWin() {
         this.state = 'TRANSITION';
-        if (this.memorizeDuration > 1.0) {
-            this.memorizeDuration = Math.max(1.0, this.memorizeDuration - 0.5);
-        } else if (this.maxLives > 1) {
-            this.maxLives = Math.max(1, this.maxLives - 1);
-        }
+        this.playSound('end_of_round', this.endSounds[this.roundIndex]);
+        this.roundIndex++;
 
-        this.currentRound++;
+        if (this.roundIndex >= ROUND_CONFIGS.length) {
+            this.controls.unlock();
+            this.ui.showWin();
+            setTimeout(() => { window.location.href = '/lobby'; }, 3000);
+            return;
+        }
 
         setTimeout(() => {
             if (this.state !== 'LOST') this.startRound();
-        }, 2000);
+        }, 6000);
     }
 
     triggerLoseState() {
         this.state = 'LOST';
         this.controls.unlock();
+        this.playSound('fail', 'sad_horn.wav');
         this.ui.showLose();
         setTimeout(() => {
             window.location.href = '/lobby';
@@ -313,16 +366,17 @@ class Game {
             card.update(dt);
         });
 
+        const roundNum = this.roundIndex + 1;
         if (this.state === 'MEMORIZE') {
             this.memorizeTimer -= dt;
-            this.ui.updateHUD(`Round ${this.currentRound} - Memorize! Starting in: ${Math.ceil(this.memorizeTimer)}s`, this.lives, this.maxLives);
+            this.ui.updateHUD(`Round ${roundNum} / ${ROUND_CONFIGS.length} - Memorize! Starting in: ${Math.ceil(this.memorizeTimer)}s`, this.lives, this.maxLives);
             if (this.memorizeTimer <= 0) {
                 this.cards.forEach(c => c.flipDown());
                 this.state = 'PLAYING';
             }
         }
         else if (this.state === 'PLAYING') {
-            this.ui.updateHUD(`Round ${this.currentRound} | Pairs: ${this.pairsFound} / 6`, this.lives, this.maxLives);
+            this.ui.updateHUD(`Round ${roundNum} / ${ROUND_CONFIGS.length} | Pairs: ${this.pairsFound} / ${this.pairsNeeded}`, this.lives, this.maxLives);
         }
         else if (this.state === 'CHECKING') {
             this.ui.updateHUD(`Checking...`, this.lives, this.maxLives);
@@ -332,7 +386,8 @@ class Game {
             }
         }
         else if (this.state === 'TRANSITION') {
-            this.ui.updateHUD(`ROUND CLEAR!<br>Preparing Level ${this.currentRound}...`, this.lives, this.maxLives);
+            const next = this.roundIndex < ROUND_CONFIGS.length ? `Preparing Round ${this.roundIndex + 1}...` : 'You win!';
+            this.ui.updateHUD(`ROUND CLEAR!<br>${next}`, this.lives, this.maxLives);
         }
 
         this.renderer.render(this.scene, this.camera);
