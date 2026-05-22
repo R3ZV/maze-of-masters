@@ -5,8 +5,9 @@ import { PointerLockControls } from 'three/addons/controls/PointerLockControls.j
 
 class UIManager {
     constructor() {
-        this.winScreen = this.createOverlay('#000000', '#50C878', 'You escaped the dragon lair,<br>without destroying the equipment!');
-        this.loseScreen = this.createOverlay('#220000', '#FF4444', 'THE DRAGON SPOTTED YOU!<br>Game Over.');
+        const hint = '<div style="font-size:.9rem;color:#aaa;margin-top:32px;letter-spacing:.15em">PRESS <span style="color:#fff">R</span> TO RETRY &nbsp;·&nbsp; <span style="color:#fff">L</span> FOR LOBBY</div>';
+        this.winScreen  = this.createOverlay('#000000', '#50C878', 'You escaped the dragon lair,<br>without destroying the equipment!' + hint);
+        this.loseScreen = this.createOverlay('#220000', '#FF4444', 'THE DRAGON SPOTTED YOU!<br>Game Over.' + hint);
         this.hud = document.createElement('div');
         this.hud.style.position = 'absolute';
         this.hud.style.top = '20px'; this.hud.style.width = '100vw';
@@ -23,8 +24,9 @@ class UIManager {
         div.style.top = '0'; div.style.left = '0';
         div.style.width = '100vw'; div.style.height = '100vh';
         div.style.backgroundColor = bgColor; div.style.color = textColor;
-        div.style.display = 'none'; div.style.alignItems = 'center';
-        div.style.justifyContent = 'center'; div.style.fontSize = '3rem';
+        div.style.display = 'none'; div.style.flexDirection = 'column';
+        div.style.alignItems = 'center'; div.style.justifyContent = 'center';
+        div.style.fontSize = '3rem';
         div.style.fontFamily = 'Arial, sans-serif'; div.style.textAlign = 'center';
         div.innerHTML = text;
         document.body.appendChild(div);
@@ -132,6 +134,12 @@ class Game {
         this.initScene();
         this.buildWorld();
         this.loadAssets();
+
+        window.addEventListener('keydown', e => {
+            const k = e.key.toLowerCase();
+            if (k === 'r' && (this.state === 'WON' || this.state === 'LOST')) this.restart();
+            if (k === 'l' && (this.state === 'WON' || this.state === 'LOST')) window.location.href = '/lobby';
+        });
 
         this.renderer.setAnimationLoop(() => this.tick());
     }
@@ -357,12 +365,22 @@ class Game {
     endGame(result) {
         this.state = result;
         this.controls.unlock();
-        this.renderer.setAnimationLoop(null);
-        this.renderer.domElement.style.display = 'none';
-        this.vrButton.style.display = 'none';
-
         if (result === 'WON') this.ui.showWin();
         if (result === 'LOST') this.ui.showLose();
+    }
+
+    restart() {
+        this.ui.winScreen.style.display  = 'none';
+        this.ui.loseScreen.style.display = 'none';
+        this.ui.hud.style.display        = '';
+        this.player.rig.position.set(0, 0, 30);
+        this.player.state.onChair        = false;
+        this.player.camera.position.y    = this.player.standingHeight;
+        this.cycleTime    = 0;
+        this.safeDuration = this.getRandomSafeTime();
+        this.scene.background.setHex(0xD3D3D3);
+        this.scene.fog.color.setHex(0xD3D3D3);
+        this.state = 'PLAYING';
     }
 }
 
