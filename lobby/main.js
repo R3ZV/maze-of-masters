@@ -112,7 +112,7 @@ class Game {
         this.walls = [];
         this.npcs = [];
         this.hoveredNPC = null;
-        this.audioSocket = new WebPdSocket("../patches/lobby-background.wasm");
+        this.audioSocket = new WebPdSocket("ws://localhost:8765");
         this.volume = 0.13;
         this.initRenderer();
         this.initScene();
@@ -137,7 +137,13 @@ class Game {
         ];
         this.buildMaze(layout);
 
-        this.audioSocket.listen().catch(err => console.error("[Audio] init failed:", err));
+        this.audioSocket.listen()
+            .then(() => this.audioSocket.send('lobbyVolume', this.volume))
+            .catch(err => console.error("[Audio] init failed:", err));
+
+        window.addEventListener('beforeunload', () => {
+            this.audioSocket.send('lobbyVolume', 0);
+        });
         
         this.renderer.setAnimationLoop(() => this.tick());
     }
@@ -282,6 +288,7 @@ class Game {
     handleInteraction() {
         if (!this.hoveredNPC) return;
         if (this.hoveredNPC.data.url !== '#') {
+            this.audioSocket.send('lobbyVolume', 0);
             window.location.href = this.hoveredNPC.data.url;
         }
     }

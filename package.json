@@ -18,7 +18,5 @@
     "url": "https://github.com/R3ZV/maze-of-masters/issues"
   },
   "homepage": "https://github.com/R3ZV/maze-of-masters#readme",
-  "dependencies": {
-    "@webpd/runtime": "0.1.2"
-  }
+  "dependencies": {}
 }
