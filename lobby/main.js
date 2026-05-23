@@ -157,7 +157,7 @@ class Game {
         this.npcs = [];
         this.hoveredNPC = null;
         this.spatialSocket = new SpatialAudioSocket("ws://localhost:8766");
-        this.volume = 0.13;
+        this.volume = 0.06;
         this.lastSentVolume = -1;
 
         if (typeof WebPdSocket !== 'undefined') {
