@@ -2,7 +2,7 @@
 
 - Radio: https://poly.pizza/m/ShNRjTDU3i
 
--Table: https://poly.pizza/m/7qAyGZnerYt
+- Table: https://poly.pizza/m/7qAyGZnerYt
 
 - Door: https://poly.pizza/m/ZIueKgYj4i
 
