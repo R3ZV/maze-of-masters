@@ -112,7 +112,7 @@ class Player {
     constructor(camera) {
         this.state = { onChair: false };
         this.rig = new THREE.Group();
-        this.rig.position.set(0, 0, 30);
+        this.rig.position.set(-15, 0, 30);
         this.rig.add(camera);
         this.camera = camera;
 
@@ -120,7 +120,7 @@ class Player {
         this.sittingHeight = 1.0;
         this.camera.position.y = this.standingHeight;
 
-        this.speed = 0.12;
+        this.speed = 0.05;
         this.currentChairPos = new THREE.Vector3();
         this.footsteps = new FootstepAudio(camera);
     }
@@ -152,6 +152,10 @@ class Player {
         if (keys.a) this.rig.position.addScaledVector(right, -this.speed);
         if (keys.d) this.rig.position.addScaledVector(right, this.speed);
 
+        this.rig.position.x = Math.max(-24, Math.min(24, this.rig.position.x));
+        this.rig.position.z = Math.max(-34, Math.min(34, this.rig.position.z));
+        this.rig.position.y = 0;
+
         const isMoving = keys.w || keys.s || keys.a || keys.d;
         this.footsteps.update(isMoving, delta);
     }
@@ -171,6 +175,7 @@ class Game {
         this.chairsList = [];
         this.door = null;
         this.doorText = null;
+        this.scientist = null;
 
         this.musicCtx = new AudioContext();
         this.musicBuf = null;
@@ -196,7 +201,7 @@ class Game {
     }
 
     getRandomSafeTime() {
-        return Math.random() * (11.0 - 4.0) + 4.0;
+        return Math.random() * (7.0 - 3.0) + 3.0;
     }
 
     initRenderer() {
@@ -274,18 +279,24 @@ class Game {
         this.doorText.visible = false; 
         this.scene.add(this.doorText);
 
-        const teacherGroup = new THREE.Group();
-        const teacherBody = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 1.4), new THREE.MeshStandardMaterial({ color: 0xFFD700 }));
-        teacherBody.position.y = 0.7;
-        const teacherHead = new THREE.Mesh(new THREE.SphereGeometry(0.25), new THREE.MeshStandardMaterial({ color: 0xFFD700 }));
-        teacherHead.position.y = 1.6;
-        teacherGroup.add(teacherBody, teacherHead);
-        teacherGroup.position.set(0, 0, -30); 
-        this.scene.add(teacherGroup);
     }
 
     loadAssets() {
         const gltfLoader = new GLTFLoader();
+        gltfLoader.load('assets/scientist.glb', (gltf) => {
+            this.scientist = gltf.scene;
+            this.scientist.position.set(0, 0, -30);
+            this.scene.add(this.scientist);
+        }, undefined, (error) => console.error('Error loading scientist:', error));
+
+        gltfLoader.load('assets/teacher_desk.glb', (gltf) => {
+            const desk = gltf.scene;
+            desk.position.set(0, 1, -28.5);
+            desk.scale.setScalar(1.5);
+            desk.rotation.y = -Math.PI / 2;
+            this.scene.add(desk);
+        }, undefined, (error) => console.error('Error loading teacher_desk:', error));
+
         gltfLoader.load('assets/chair.glb', (gltf) => {
             const loadedChair = gltf.scene;
             loadedChair.rotation.y = Math.PI;
@@ -360,7 +371,39 @@ class Game {
             this.update(dt);
         }
 
+        if (this.state === 'LOSING') {
+            this.updateLosingSequence(dt);
+        }
+
         this.render();
+    }
+
+    updateLosingSequence(dt) {
+        if (!this.scientist) {
+            this.state = 'LOST';
+            this.controls.unlock();
+            this.ui.showLose();
+            return;
+        }
+
+        const playerPos = this.player.rig.position;
+        const npcPos = this.scientist.position;
+        const dx = playerPos.x - npcPos.x;
+        const dz = playerPos.z - npcPos.z;
+        const dist = Math.sqrt(dx * dx + dz * dz);
+
+        this.scientist.lookAt(playerPos.x, npcPos.y, playerPos.z);
+
+        if (dist < 1.5) {
+            this.state = 'LOST';
+            this.controls.unlock();
+            this.ui.showLose();
+            return;
+        }
+
+        const speed = 20.0;
+        npcPos.x += (dx / dist) * speed * dt;
+        npcPos.z += (dz / dist) * speed * dt;
     }
 
     update(dt) {
@@ -387,7 +430,7 @@ class Game {
         const totalCycle = this.safeDuration + this.lookDuration;
 
         if (this.cycleTime > totalCycle) {
-            this.cycleTime = 0;
+            this.cycleTime -=totalCycle;
             this.safeDuration = this.getRandomSafeTime();
         }
 
@@ -439,24 +482,29 @@ class Game {
     }
 
     endGame(result) {
+        if (result === 'LOST') {
+            this.state = 'LOSING';
+            this._stopMusic();
+            return;
+        }
         this.state = result;
         this.controls.unlock();
         this._stopMusic();
         if (result === 'WON') this.ui.showWin();
-        if (result === 'LOST') this.ui.showLose();
     }
 
     restart() {
         this.ui.winScreen.style.display  = 'none';
         this.ui.loseScreen.style.display = 'none';
         this.ui.hud.style.display        = '';
-        this.player.rig.position.set(0, 0, 30);
+        this.player.rig.position.set(-15, 0, 30);
         this.player.state.onChair        = false;
         this.player.camera.position.y    = this.player.standingHeight;
         this.cycleTime    = 0;
         this.safeDuration = this.getRandomSafeTime();
         this.scene.background.setHex(0xD3D3D3);
         this.scene.fog.color.setHex(0xD3D3D3);
+        if (this.scientist) this.scientist.position.set(0, 0, -30);
         this.state = 'PLAYING';
         this._playMusic();
     }
