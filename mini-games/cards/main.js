@@ -270,7 +270,17 @@ class Game {
         this.rig.add(this.camera);
 
         this.camera.position.set(0, 4.5, 0);
-        this.camera.lookAt(0, 1.05, -1.8); 
+        this.camera.lookAt(0, 1.05, -1.8);
+
+        this.renderer.xr.addEventListener('sessionstart', () => {
+            this.rig.position.y = 2.0;
+            this.rig.position.z = 2.5;
+        });
+
+        this.renderer.xr.addEventListener('sessionend', () => {
+            this.rig.position.y = 0;
+            this.rig.position.z = 1.8;
+        });
 
         this.controls = new PointerLockControls(this.camera, document.body);
         document.body.addEventListener('click', () => {
