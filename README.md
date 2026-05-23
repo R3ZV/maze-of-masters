@@ -33,9 +33,11 @@ Two Pure Data patches and two Python bridges run in parallel.
 - `patches/init_setup.pd` — spatial audio driven by player position (OSC UDP 8001)
 
 **2.** Start both WebSocket / OSC bridges (requires `websockets` and `python-osc`):
+You need [uv](https://docs.astral.sh/uv/) installed or if you have the packages on your machine
+just run them without `uv`.
 ```bash
-python server.py          # ws://localhost:8765 → OSC UDP 8000
-python server_spatial.py  # ws://localhost:8766 → OSC UDP 8001
+uv run python3 server.py          # ws://localhost:8765 → OSC UDP 8000
+uv run python3 server_spatial.py  # ws://localhost:8766 → OSC UDP 8001
 ```
 
 **3.** Serve the project from the root directory:
