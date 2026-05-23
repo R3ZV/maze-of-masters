@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 import { VRButton } from 'three/addons/webxr/VRButton.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
 class UIManager {
     constructor() {
         this.crosshair = document.createElement('div');
@@ -49,7 +50,8 @@ class FootstepAudio {
         const loader = new THREE.AudioLoader();
         for (let i = 1; i <= 6; i++) {
             const audio = new THREE.Audio(this.listener);
-            loader.load(`assets/foot_${i}.wav`, buf => audio.setBuffer(buf));
+            loader.load(`assets/foot_${i}.wav`, buf => audio.setBuffer(buf), undefined, () => {
+            });
             this.sounds.push(audio);
         }
     }
@@ -153,8 +155,16 @@ class Game {
         this.walls = [];
         this.npcs = [];
         this.hoveredNPC = null;
-        this.audioSocket = new WebPdSocket("ws://localhost:8765");
         this.volume = 0.13;
+        this.lastSentVolume = -1;
+
+        if (typeof WebPdSocket !== 'undefined') {
+            this.audioSocket = new WebPdSocket("ws://localhost:8765");
+        } else {
+            console.warn("WebPdSocket is missing! Audio networking disabled.");
+            this.audioSocket = { listen: async () => {}, send: () => {} };
+        }
+
         this.initRenderer();
         this.initScene();
         this.initVRControllers();
@@ -172,12 +182,12 @@ class Game {
 
         this.audioSocket.listen()
             .then(() => this.audioSocket.send('lobbyVolume', this.volume))
-            .catch(err => console.error("[Audio] init failed:", err));
+            .catch(err => console.warn("[Audio] init failed, continuing anyway:", err));
 
         window.addEventListener('beforeunload', () => {
-            this.audioSocket.send('lobbyVolume', 0);
+            if (this.audioSocket) this.audioSocket.send('lobbyVolume', 0);
         });
-        
+
         this.renderer.setAnimationLoop(() => this.tick());
     }
 
@@ -215,6 +225,9 @@ class Game {
         this.controls = new PointerLockControls(this.camera, document.body);
         document.body.addEventListener('click', () => {
             if (!this.renderer.xr.isPresenting) this.controls.lock();
+            if (this.player.footsteps.listener.context.state === 'suspended') {
+                this.player.footsteps.listener.context.resume();
+            }
         });
     }
 
@@ -253,13 +266,13 @@ class Game {
 
     getGameData(id) {
         switch(id) {
-            case 'A': return { name: `Dragon's lair`,       url: '/mini-games/dragon' };
-            case 'B': return { name: 'Match the Sipos',     url: '/mini-games/cards' };
-            case 'C': return { name: `Paul's shop`,         url: '/mini-games/paul' };
-            case 'D': return { name: `Rusu's radio`,        url: '/mini-games/signals' };
-            case 'E': return { name: `Paun's room`,         url: '/mini-games/bird' };
-            case 'F': return { name: `Chirita's rocket`,    url: '/mini-games/space' };
-            default: return { name: 'unknown',              url: '#' };
+            case 'A': return { name: `Dragon's lair`,        url: '/mini-games/dragon' };
+            case 'B': return { name: 'Match the Sipos',      url: '/mini-games/cards' };
+            case 'C': return { name: `Paul's shop`,          url: '/mini-games/paul' };
+            case 'D': return { name: `Rusu's radio`,         url: '/mini-games/signals' };
+            case 'E': return { name: `Paun's room`,          url: '/mini-games/bird' };
+            case 'F': return { name: `Chirita's rocket`,     url: '/mini-games/space' };
+            default: return { name: 'unknown',               url: '#' };
         }
     }
     getModelById(id){
@@ -281,9 +294,10 @@ class Game {
             case 'D': return -3*Math.PI/4;
             case 'E': return -Math.PI/4;
             case "F": return 0;
-            default: return "#";
+            default: return 0;
         }
     }
+
     buildMaze(matrix) {
         const cellSize = 4;
         const wallHeight = 4;
@@ -325,25 +339,35 @@ class Game {
         const loader = new GLTFLoader();
         const modelPath = this.getModelById(id);
 
+        if (modelPath === "#") return;
+
         const TARGET_HEIGHT = 1.8;
-        loader.load(modelPath, (glb) => {
-            const model = glb.scene;
-            
-            model.updateMatrixWorld(true);
+        loader.load(
+            modelPath, 
+            (glb) => {
+                const model = glb.scene;
 
-            const box = new THREE.Box3().setFromObject(model);
-            const naturalHeight = box.max.y - box.min.y;
-            const scale = TARGET_HEIGHT / naturalHeight;
-            model.scale.setScalar(scale);
+                model.updateMatrixWorld(true);
 
-            const scaledBox = new THREE.Box3().setFromObject(model);
-            model.position.y -= scaledBox.min.y;
-            model.rotation.y += this.getRotationById(id);
-            group.add(model);
-        });
+                const box = new THREE.Box3().setFromObject(model);
+                const naturalHeight = box.max.y - box.min.y;
+                const scale = naturalHeight > 0 ? (TARGET_HEIGHT / naturalHeight) : 1;
+
+                model.scale.setScalar(scale);
+                model.updateMatrixWorld(true);
+
+                const scaledBox = new THREE.Box3().setFromObject(model);
+                model.position.y -= scaledBox.min.y;
+                model.rotation.y += this.getRotationById(id);
+                group.add(model);
+            },
+            undefined,
+            (error) => console.warn(`Failed to load NPC ${id}:`, error) // Don't crash if model missing
+        );
+
         group.position.set(x, 0, z);
         this.scene.add(group);
-        
+
         const gameData = this.getGameData(id);
         const text = this.createTextSprite(`[E]: Enter ${gameData.name}`);
         text.position.set(0, 2.2, 0);
@@ -383,7 +407,12 @@ class Game {
             if (this.hoveredNPC) {
                 this.hoveredNPC.sprite.visible = true;
             }
-            this.audioSocket.send('lobbyVolume', this.volume);
+
+            // Optimization: Don't spam the websocket 60 times a second if the volume hasn't changed
+            if (this.volume !== this.lastSentVolume) {
+                this.audioSocket.send('lobbyVolume', this.volume);
+                this.lastSentVolume = this.volume;
+            }
         }
 
         this.renderer.render(this.scene, this.camera);

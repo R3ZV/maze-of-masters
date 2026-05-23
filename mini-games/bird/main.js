@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
+import { VRButton } from 'three/addons/webxr/VRButton.js';
 
 class UIManager {
     constructor() {
@@ -29,7 +30,7 @@ class UIManager {
         this.helperBox.style.color = '#dddddd';
         this.helperBox.style.fontSize = '1.2rem';
         this.helperBox.style.textShadow = '1px 1px 2px #000';
-        this.helperBox.innerHTML = "Press <b>D</b> to advance tape. Aim at the red button and <b>CLICK</b> to submit.";
+        this.helperBox.innerHTML = "VR: <b>Grip</b> to advance tape, <b>Trigger</b> to submit<br>Desktop: <b>D</b> to advance, <b>Click</b> to submit";
         this.helperBox.style.textAlign = 'center';
         document.body.appendChild(this.helperBox);
 
@@ -132,6 +133,7 @@ class TuringMachineGame {
 
         this.initScene();
         this.initEnvironment();
+        this.initVRControllers();
 
         window.addEventListener('keydown', (e) => this.handleKeyboard(e));
         window.addEventListener('keydown', e => {
@@ -151,14 +153,24 @@ class TuringMachineGame {
         this.renderer = new THREE.WebGLRenderer({ antialias: true });
         this.renderer.setSize(window.innerWidth, window.innerHeight);
         this.renderer.shadowMap.enabled = true;
+        this.renderer.xr.enabled = true;
         document.body.appendChild(this.renderer.domElement);
+
+        document.body.appendChild(VRButton.createButton(this.renderer));
 
         this.scene = new THREE.Scene();
         this.scene.background = new THREE.Color(0x1a1a24);
 
-        // seated position at desk
         this.camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
-        this.camera.position.set(0, 2.5, 3.5);
+
+        this.rig = new THREE.Group();
+
+        this.rig.position.set(0, 0, 3.5);
+
+        this.rig.add(this.camera);
+        this.scene.add(this.rig);
+
+        this.camera.position.set(0, 2.5, 0);
 
         this.controls = new PointerLockControls(this.camera, document.body);
 
@@ -171,6 +183,28 @@ class TuringMachineGame {
         this.scene.add(pointLight);
 
         this.raycaster = new THREE.Raycaster();
+    }
+
+    initVRControllers() {
+        this.controllers = [];
+
+        const onSelect = (event) => this.handleVRClick(event.target);
+        const onSqueeze = () => this.advanceTape();
+
+        for (let i = 0; i < 2; i++) {
+            const controller = this.renderer.xr.getController(i);
+            controller.addEventListener('select', onSelect);
+            controller.addEventListener('squeeze', onSqueeze);
+            this.rig.add(controller);
+            this.controllers.push(controller);
+
+            const geometry = new THREE.BufferGeometry().setFromPoints([
+                new THREE.Vector3(0, 0, 0), 
+                new THREE.Vector3(0, 0, -5)
+            ]);
+            const line = new THREE.Line(geometry, new THREE.LineBasicMaterial({ color: 0xffffff }));
+            controller.add(line);
+        }
     }
 
     initEnvironment() {
@@ -373,20 +407,44 @@ class TuringMachineGame {
         this.isProcessing = false;
     }
 
+    advanceTape() {
+        if (this.isProcessing) return;
+        if (this.tapeIndex < this.tapeString.length - 1) {
+            this.tapeIndex++;
+            this.updateCards();
+        }
+    }
+
     handleKeyboard(e) {
+    if (this.isProcessing) return;
+
+    if (e.code === 'KeyD' || e.key.toLowerCase() === 'd') {
+        e.preventDefault();
+        this.advanceTape();
+    }
+}
+
+    handleVRClick(controller) {
         if (this.isProcessing) return;
 
-        if (e.code === 'KeyD') {
-            e.preventDefault();
-            if (this.tapeIndex < this.tapeString.length - 1) {
-                this.tapeIndex++;
-                this.updateCards();
-            }
+        const tempMatrix = new THREE.Matrix4();
+        tempMatrix.identity().extractRotation(controller.matrixWorld);
+
+        this.raycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld);
+        this.raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tempMatrix);
+
+        const intersects = this.raycaster.intersectObject(this.submitButton);
+
+        if (intersects.length > 0) {
+            this.submitCurrentChar();
+            this.animateButtonPress();
         }
     }
 
     handleMouseClick(e) {
         if (this.isProcessing) return;
+
+        if (this.renderer.xr.isPresenting) return;
 
         if (!this.controls.isLocked) {
             this.controls.lock();
