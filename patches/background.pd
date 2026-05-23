@@ -83,10 +83,10 @@
 #X obj 357 577 *~;
 #X obj 359 658 reverb2;
 #X obj 364 725 dac~;
-#X msg 450 760 60;
-#X msg 550 760 64;
-#X msg 650 760 67;
-#X msg 750 760 72;
+#X msg 450 760 48;
+#X msg 550 760 51;
+#X msg 650 760 55;
+#X msg 750 760 60;
 #X msg 450 790 2000;
 #X msg 550 790 1;
 #X obj 50 760 netreceive -u -b 8000;

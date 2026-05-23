@@ -1,0 +1,10 @@
+[project]
+name = "maze-of-masters"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "python-osc>=1.10.2",
+    "websockets>=16.0",
+]
