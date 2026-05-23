@@ -402,7 +402,7 @@ class Game {
             .then(b => this.audioCtx.decodeAudioData(b))
             .catch(() => null);
         loadAudio('assets/explode.wav').then(b => { this.explodeBuf = b; });
-        loadAudio('assets/space_adventure.wav').then(b => { this.musicBuf = b; if (this.audioCtx.state === 'running' && !this.musicSrc) this._playMusic(); });
+        loadAudio('assets/space_adventure.wav').then(b => { this.musicBuf = b; if (this.audioCtx.state === 'running' && !this.musicSrc && this.state === 'PLAYING') this._playMusic(); });
         loadAudio('assets/rocket_flying.wav').then(b => { this.rocketBuf = b; });
 
         // Click-to-start / retry
