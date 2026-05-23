@@ -14,7 +14,7 @@ class WebGLUI {
 
         const hudMat = new THREE.MeshBasicMaterial({ map: this.hudTex, transparent: true, depthTest: false });
         this.hudMesh = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 0.32), hudMat);
-        this.hudMesh.position.set(0, 0.5, -1.5);
+        this.hudMesh.position.set(0, 0.9, -1.5);
         this.hudMesh.renderOrder = 999;
         this.camera.add(this.hudMesh);
 
@@ -231,10 +231,16 @@ class Game {
         this.musicCtx = new AudioContext();
         this.musicBuf = null;
         this.musicSrc = null;
+        this.spottedBuf = null;
         fetch('assets/horror.wav')
             .then(r => r.arrayBuffer())
             .then(b => this.musicCtx.decodeAudioData(b))
             .then(b => { this.musicBuf = b; if (this.musicCtx.state === 'running' && !this.musicSrc) this._playMusic(); })
+            .catch(() => null);
+        fetch('assets/spotted.wav')
+            .then(r => r.arrayBuffer())
+            .then(b => this.musicCtx.decodeAudioData(b))
+            .then(b => { this.spottedBuf = b; })
             .catch(() => null);
 
         this.initRenderer();
@@ -557,6 +563,14 @@ class Game {
         if (result === 'LOST') {
             this.state = 'LOSING';
             this._stopMusic();
+            if (this.spottedBuf) {
+                const src = this.musicCtx.createBufferSource();
+                src.buffer = this.spottedBuf;
+                const gain = this.musicCtx.createGain();
+                gain.gain.value = 0.25;
+                src.connect(gain).connect(this.musicCtx.destination);
+                src.start();
+            }
             return;
         }
         this.state = result;
