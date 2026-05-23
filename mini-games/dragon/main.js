@@ -201,7 +201,7 @@ class Game {
     }
 
     getRandomSafeTime() {
-        return Math.random() * (7.0 - 3.0) + 3.0;
+        return Math.random() * (8 - 5) + 5;
     }
 
     initRenderer() {
@@ -430,7 +430,7 @@ class Game {
         const totalCycle = this.safeDuration + this.lookDuration;
 
         if (this.cycleTime > totalCycle) {
-            this.cycleTime -=totalCycle;
+            this.cycleTime = 0;
             this.safeDuration = this.getRandomSafeTime();
         }
 
