@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { VRButton } from 'three/addons/webxr/VRButton.js';
+import { XRControllerModelFactory } from 'three/addons/webxr/XRControllerModelFactory.js';
 
 class UIManager {
     constructor() {
@@ -185,6 +187,7 @@ class Game {
             this.buildShopEnvironment();
             this.buildInteractables();
 
+            // Desktop click
             window.addEventListener('mousedown', () => this.handleInteraction());
             this.setupKeys();
 
@@ -292,7 +295,11 @@ class Game {
     initRenderer() {
         this.renderer = new THREE.WebGLRenderer({ antialias: true });
         this.renderer.setSize(window.innerWidth, window.innerHeight);
+        this.renderer.xr.enabled = true;
+
         document.body.appendChild(this.renderer.domElement);
+
+        document.body.appendChild(VRButton.createButton(this.renderer));
 
         window.addEventListener('resize', () => {
             this.camera.aspect = window.innerWidth / window.innerHeight;
@@ -323,13 +330,38 @@ class Game {
 
         this.controls = new PointerLockControls(this.camera, document.body);
         document.body.addEventListener('click', () => {
-            if (this.state === 'PLAYING') {
+            if (this.state === 'PLAYING' && !this.renderer.xr.isPresenting) {
                 this.controls.lock();
                 if (this.audioListener.context.state === 'suspended') {
                     this.audioListener.context.resume();
                 }
             }
         });
+
+        this.controllers = [];
+        const controllerModelFactory = new XRControllerModelFactory();
+
+        const geometry = new THREE.BufferGeometry().setFromPoints([
+            new THREE.Vector3(0, 0, 0),
+            new THREE.Vector3(0, 0, -1)
+        ]);
+        const line = new THREE.Line(geometry);
+        line.name = 'line';
+        line.scale.z = 5;
+
+        for (let i = 0; i < 2; i++) {
+            const controller = this.renderer.xr.getController(i);
+            controller.addEventListener('selectstart', () => this.handleInteraction());
+            this.rig.add(controller);
+            this.controllers.push(controller);
+
+            const controllerGrip = this.renderer.xr.getControllerGrip(i);
+            controllerGrip.add(controllerModelFactory.createControllerModel(controllerGrip));
+            this.rig.add(controllerGrip);
+
+            controller.add(line.clone());
+        }
+
         this.raycaster = new THREE.Raycaster();
     }
 
@@ -530,7 +562,9 @@ class Game {
     }
 
     handleInteraction() {
-        if (this.state !== 'PLAYING' || !this.controls.isLocked || this.stallTimer > 0) return;
+        if (this.state !== 'PLAYING' || this.stallTimer > 0) return;
+        if (!this.renderer.xr.isPresenting && !this.controls.isLocked) return;
+
         if (this.hoveredItem && this.queue.length > 0 && this.customerState === 'WAITING') {
             if (this.sounds.click) {
                 if (this.sounds.click.isPlaying) this.sounds.click.stop();
@@ -620,7 +654,15 @@ class Game {
                 }
             }
 
-            this.raycaster.setFromCamera(new THREE.Vector2(0, 0), this.camera);
+            if (this.renderer.xr.isPresenting && this.controllers.length > 0) {
+                const tempMatrix = new THREE.Matrix4();
+                tempMatrix.identity().extractRotation(this.controllers[0].matrixWorld);
+                this.raycaster.ray.origin.setFromMatrixPosition(this.controllers[0].matrixWorld);
+                this.raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tempMatrix);
+            } else {
+                this.raycaster.setFromCamera(new THREE.Vector2(0, 0), this.camera);
+            }
+
             const intersects = this.raycaster.intersectObjects(this.items.map(i => i.mesh), true);
 
             this.hoveredItem = null;
