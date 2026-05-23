@@ -12,12 +12,16 @@ async def handler(websocket):
     try:
         async for message in websocket:
             data = json.loads(message)
-            for obj in data:
-                client.send_message(f"/obj/{obj['id']}", float(obj['dist']))
+            if isinstance(data, list):
+                for obj in data:
+                    client.send_message(f"/obj/{obj['id']}", float(obj['dist']))
+            elif isinstance(data, dict):
+                client.send_message(f"/{data['type']}", float(data['value']))
     except websockets.exceptions.ConnectionClosed:
         pass
     finally:
-        print("Disconnected.")
+        client.send_message("/spatialVolume", 0.0)
+        print("Disconnected. Sent spatialVolume 0.")
 
 async def main():
     async with websockets.serve(handler, "localhost", 8766):

@@ -188,6 +188,7 @@ class Game {
 
         window.addEventListener('beforeunload', () => {
             if (this.audioSocket) this.audioSocket.send('lobbyVolume', 0);
+            this.spatialSocket.sendControl('spatialVolume', 0);
         });
 
         this.renderer.setAnimationLoop(() => this.tick());
@@ -383,6 +384,7 @@ class Game {
         if (!this.hoveredNPC) return;
         if (this.hoveredNPC.data.url !== '#') {
             this.audioSocket.send('lobbyVolume', 0);
+            this.spatialSocket.sendControl('spatialVolume', 0);
             window.location.href = this.hoveredNPC.data.url;
         }
     }

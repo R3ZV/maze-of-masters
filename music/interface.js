@@ -32,7 +32,7 @@ export class SpatialAudioSocket {
         this.ready = false;
         try {
             this.ws = new WebSocket(wsUrl);
-            this.ws.onopen = () => { this.ready = true; };
+            this.ws.onopen = () => { this.ready = true; this.sendControl('spatialVolume', 1); };
             this.ws.onclose = () => { this.ready = false; };
             this.ws.onerror = () => { this.ready = false; };
         } catch (e) {}
@@ -41,6 +41,12 @@ export class SpatialAudioSocket {
     send(distances) {
         if (this.ready && this.ws.readyState === WebSocket.OPEN) {
             this.ws.send(JSON.stringify(distances));
+        }
+    }
+
+    sendControl(type, value) {
+        if (this.ready && this.ws.readyState === WebSocket.OPEN) {
+            this.ws.send(JSON.stringify({ type, value }));
         }
     }
 }

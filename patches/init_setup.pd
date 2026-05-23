@@ -31,6 +31,10 @@
 #X obj 500 657 pd_reverb;
 #X obj 500 700 *~ 0.25;
 #X obj 352 723 +~;
+#X obj 352 750 *~;
+#X obj 500 750 route spatialVolume;
+#X obj 650 750 loadbang;
+#X msg 650 780 1;
 #X connect 0 0 1 0;
 #X connect 0 0 8 0;
 #X connect 1 0 9 0;
@@ -70,5 +74,10 @@
 #X connect 27 0 31 0;
 #X connect 29 0 30 0;
 #X connect 30 0 31 1;
-#X connect 31 0 28 0;
-#X connect 31 0 28 1;
+#X connect 31 0 32 0;
+#X connect 32 0 28 0;
+#X connect 32 0 28 1;
+#X connect 2 1 33 0;
+#X connect 33 0 32 1;
+#X connect 34 0 35 0;
+#X connect 35 0 32 1;
