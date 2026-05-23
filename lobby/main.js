@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 import { VRButton } from 'three/addons/webxr/VRButton.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { WebPdSocket, SpatialAudioSocket } from '../music/interface.js';
 
 class UIManager {
     constructor() {
@@ -139,7 +140,7 @@ class Player {
         const playerSphere = new THREE.Sphere(this.rig.position, this.radius);
         for (let wall of walls) {
             const wallBox = new THREE.Box3().setFromObject(wall);
-            wallBox.min.y = -10; 
+            wallBox.min.y = -10;
             wallBox.max.y = 10;
             if (wallBox.intersectsSphere(playerSphere)) return true;
         }
@@ -155,14 +156,15 @@ class Game {
         this.walls = [];
         this.npcs = [];
         this.hoveredNPC = null;
-        this.volume = 0.13;
+        this.spatialSocket = new SpatialAudioSocket("ws://localhost:8766");
+        this.volume = 0.06;
         this.lastSentVolume = -1;
 
         if (typeof WebPdSocket !== 'undefined') {
             this.audioSocket = new WebPdSocket("ws://localhost:8765");
         } else {
             console.warn("WebPdSocket is missing! Audio networking disabled.");
-            this.audioSocket = { listen: async () => {}, send: () => {} };
+            this.audioSocket = { listen: async () => { }, send: () => { } };
         }
 
         this.initRenderer();
@@ -186,6 +188,7 @@ class Game {
 
         window.addEventListener('beforeunload', () => {
             if (this.audioSocket) this.audioSocket.send('lobbyVolume', 0);
+            this.spatialSocket.sendControl('spatialVolume', 0);
         });
 
         this.renderer.setAnimationLoop(() => this.tick());
@@ -209,7 +212,7 @@ class Game {
 
     initScene() {
         this.scene = new THREE.Scene();
-        this.scene.background = new THREE.Color(0x87CEEB); 
+        this.scene.background = new THREE.Color(0x87CEEB);
         this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 100);
 
         const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
@@ -265,18 +268,18 @@ class Game {
     }
 
     getGameData(id) {
-        switch(id) {
-            case 'A': return { name: `Dragon's lair`,        url: '/mini-games/dragon' };
-            case 'B': return { name: 'Match the Sipos',      url: '/mini-games/cards' };
-            case 'C': return { name: `Paul's shop`,          url: '/mini-games/paul' };
-            case 'D': return { name: `Rusu's radio`,         url: '/mini-games/signals' };
-            case 'E': return { name: `Paun's room`,          url: '/mini-games/bird' };
-            case 'F': return { name: `Chirita's rocket`,     url: '/mini-games/space' };
-            default: return { name: 'unknown',               url: '#' };
+        switch (id) {
+            case 'A': return { name: `Dragon's lair`, url: '/mini-games/dragon' };
+            case 'B': return { name: 'Match the Sipos', url: '/mini-games/cards' };
+            case 'C': return { name: `Paul's shop`, url: '/mini-games/paul' };
+            case 'D': return { name: `Rusu's radio`, url: '/mini-games/signals' };
+            case 'E': return { name: `Paun's room`, url: '/mini-games/bird' };
+            case 'F': return { name: `Chirita's rocket`, url: '/mini-games/space' };
+            default: return { name: 'unknown', url: '#' };
         }
     }
-    getModelById(id){
-        switch(id) {
+    getModelById(id) {
+        switch (id) {
             case 'A': return "/lobby/models/dragan.glb";
             case 'B': return "/lobby/models/sipos.glb";
             case 'C': return "/lobby/models/irofti.glb";
@@ -286,13 +289,13 @@ class Game {
             default: return "#";
         }
     }
-    getRotationById(id){
-        switch(id) {
+    getRotationById(id) {
+        switch (id) {
             case 'A': return 0;
-            case 'B': return Math.PI/2;
-            case 'C': return Math.PI/2;
-            case 'D': return -3*Math.PI/4;
-            case 'E': return -Math.PI/4;
+            case 'B': return Math.PI / 2;
+            case 'C': return Math.PI / 2;
+            case 'D': return -3 * Math.PI / 4;
+            case 'E': return -Math.PI / 4;
             case "F": return 0;
             default: return 0;
         }
@@ -324,7 +327,7 @@ class Game {
                     wall.position.set(x, wallHeight / 2, z);
                     this.scene.add(wall);
                     this.walls.push(wall);
-                } 
+                }
                 else if (char !== '.') {
                     this.spawnNPC(char, x, z);
                 }
@@ -343,7 +346,7 @@ class Game {
 
         const TARGET_HEIGHT = 1.8;
         loader.load(
-            modelPath, 
+            modelPath,
             (glb) => {
                 const model = glb.scene;
 
@@ -381,6 +384,7 @@ class Game {
         if (!this.hoveredNPC) return;
         if (this.hoveredNPC.data.url !== '#') {
             this.audioSocket.send('lobbyVolume', 0);
+            this.spatialSocket.sendControl('spatialVolume', 0);
             window.location.href = this.hoveredNPC.data.url;
         }
     }
@@ -413,6 +417,13 @@ class Game {
                 this.audioSocket.send('lobbyVolume', this.volume);
                 this.lastSentVolume = this.volume;
             }
+
+            const spatialDistances = ['A', 'B', 'C', 'D'].map(id => {
+                const npc = this.npcs.find(n => n.id === id);
+                const dist = npc ? this.player.rig.position.distanceTo(npc.position) * 10 : 500;
+                return { id: `Obj_${id}`, dist: Math.round(dist * 10) / 10 };
+            });
+            this.spatialSocket.send(spatialDistances);
         }
 
         this.renderer.render(this.scene, this.camera);
