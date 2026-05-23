@@ -183,7 +183,7 @@ class Game {
         fetch('assets/horror.wav')
             .then(r => r.arrayBuffer())
             .then(b => this.musicCtx.decodeAudioData(b))
-            .then(b => { this.musicBuf = b; })
+            .then(b => { this.musicBuf = b; if (this.musicCtx.state === 'running' && !this.musicSrc) this._playMusic(); })
             .catch(() => null);
 
         this.initRenderer();
@@ -459,8 +459,8 @@ class Game {
         this.renderer.render(this.scene, this.camera);
     }
 
-    _playMusic() {
-        this.musicCtx.resume();
+    async _playMusic() {
+        await this.musicCtx.resume();
         this._stopMusic();
         if (this.musicBuf) {
             this.musicSrc = this.musicCtx.createBufferSource();

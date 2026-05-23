@@ -329,7 +329,7 @@ class Radio {
         }
 
         // Proximity label sprite
-        this.sprite = this._makeSprite('[E] Tune  •  [Right Click] Switch Channel');
+        this.sprite = this._makeSprite('[E] Tune');
         this.sprite.position.set(0, 0.55, 0);
         this.sprite.visible = false;
         this.group.add(this.sprite);
@@ -525,7 +525,7 @@ class Game {
         fetch('assets/mysterious.wav')
             .then(r => r.arrayBuffer())
             .then(b => this.musicCtx.decodeAudioData(b))
-            .then(b => { this.musicBuf = b; })
+            .then(b => { this.musicBuf = b; if (this.musicCtx.state === 'running' && !this.musicSrc) this._playMusic(); })
             .catch(() => null);
 
         this.initRenderer();
@@ -846,8 +846,8 @@ class Game {
         if (this.timeLeft <= 0) this.endGame('LOST');
     }
 
-    _playMusic() {
-        this.musicCtx.resume();
+    async _playMusic() {
+        await this.musicCtx.resume();
         this._stopMusic();
         if (this.musicBuf) {
             this.musicSrc = this.musicCtx.createBufferSource();
