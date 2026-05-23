@@ -78,7 +78,7 @@ class UIManager {
     showTuning(radio) {
         this.tuningUI.style.display = 'block';
         this._refreshTuning(radio);
-        radio.sprite.visible = true; // show the sprite with updated instructions
+        radio.sprite.visible = true;
     }
 
     refreshTuning(radio) {
@@ -86,7 +86,7 @@ class UIManager {
     }
 
     _refreshTuning(radio) {
-        const BAR_CHARS = 30; // number of characters in the bar
+        const BAR_CHARS = 30;
 
         // Map values to bar positions
         const posIdx  = Math.round((radio.position / TUNE_RANGE) * (BAR_CHARS - 1));
@@ -116,7 +116,7 @@ class UIManager {
         this.tuningUI.innerHTML =
             `${numberDisplay}Radio ${radio.id + 1} &nbsp;|&nbsp; ${channelStr} &nbsp;|&nbsp; ${status}<br>` +
             `<span style="font-family:monospace;font-size:1.05rem;letter-spacing:1px">[${bar}]</span><br>` +
-            `<span style="font-size:0.85rem;opacity:0.7">Scroll to tune &nbsp;·&nbsp; Right Click to change channel &nbsp;·&nbsp; [E] to step away</span>`;
+            `<span style="font-size:0.85rem;opacity:0.7">Scroll/Thumbstick to tune &nbsp;·&nbsp; Right Click/Grip to change channel &nbsp;·&nbsp; [E]/Trigger to step away</span>`;
     }
 
     hideTuning() {
@@ -166,6 +166,7 @@ class InputManager {
             const k = e.key.toLowerCase();
             if (k in this.keys) this.keys[k] = false;
         });
+
         // Scroll wheel to turn knob
         window.addEventListener('wheel', e => onScroll(e.deltaY > 0 ? 1 : -1));
         // Right-click (button 2) to change channel
@@ -244,19 +245,19 @@ class Player {
         euler.setFromQuaternion(this.camera.quaternion);
         const fwd   = new THREE.Vector3(0, 0, -1).applyEuler(new THREE.Euler(0, euler.y, 0));
         const right = new THREE.Vector3(1, 0, 0).applyEuler(new THREE.Euler(0, euler.y, 0));
-        
+
         const newPos = this.rig.position.clone();
         if (keys.w) newPos.addScaledVector(fwd, this.speed);
         if (keys.s) newPos.addScaledVector(fwd, -this.speed);
         if (keys.a) newPos.addScaledVector(right, -this.speed);
         if (keys.d) newPos.addScaledVector(right, this.speed);
-        
+
         // Check collision on each axis independently to allow sliding
         const testXOnly = this.rig.position.clone();
         testXOnly.x = newPos.x;
         const testZOnly = this.rig.position.clone();
         testZOnly.z = newPos.z;
-        
+
         if (!this.collisionChecker || !this.collisionChecker(testXOnly, this.collisionRadius)) {
             this.rig.position.x = newPos.x;
         }
@@ -378,7 +379,7 @@ class Radio {
                 return found;
             }
         }
-        
+
         // If no named knob, search by mesh hierarchy (find smallest mesh)
         let smallestMesh = null;
         let smallestSize = Infinity;
@@ -392,12 +393,12 @@ class Radio {
                 }
             }
         });
-        
+
         if (smallestMesh) {
             console.log('Found knob by size heuristic');
             return smallestMesh;
         }
-        
+
         console.warn('Could not find knob in model, using placeholder');
         return null;
     }
@@ -518,6 +519,7 @@ class Game {
         this.tableModel  = null; // will be loaded from assets
         this.doorModel   = null; // will be loaded from assets
         this.keypadModel = null; // will be loaded from assets
+        this.controllers = []; // XR Controllers
 
         this.musicCtx = new AudioContext();
         this.musicBuf = null;
@@ -578,6 +580,22 @@ class Game {
                 if (!this.musicSrc) this._playMusic();
             }
         });
+
+        // Set up XR controllers
+        for (let i = 0; i < 2; i++) {
+            const controller = this.renderer.xr.getController(i);
+
+            // Map VR standard events to our interaction functions
+            controller.addEventListener('selectstart', () => {
+                // Ensure audio contexts resume dynamically in VR
+                if (this.musicCtx.state !== 'running' && !this.musicSrc) this._playMusic();
+                this.handleInteraction();
+            });
+            controller.addEventListener('squeezestart', () => this.handleChannelChange());
+
+            this.scene.add(controller);
+            this.controllers.push(controller);
+        }
     }
 
     loadRadioModel(onComplete) {
@@ -726,7 +744,7 @@ class Game {
             spot.target.position.set(pos.x, 0, pos.z);
             this.scene.add(spot);
             this.scene.add(spot.target);
-            
+
             // Rotate top and middle radios180 degrees to face player
             if (0 <= i && i <= 2) {
                 this.radios[i].group.rotation.y = Math.PI;
@@ -811,16 +829,88 @@ class Game {
 
     tick() {
         const dt = this.clock.getDelta();
-        if (this.state === 'PLAYING' && this.controls.isLocked) {
+        const isPresenting = this.renderer.xr.isPresenting;
+
+        if (this.state === 'PLAYING' && (this.controls.isLocked || isPresenting)) {
             this.update(dt);
         }
         this.renderer.render(this.scene, this.camera);
     }
 
     update(dt) {
-        this.player.updateMovement(this.input.keys, dt);
+        const session = this.renderer.xr.getSession();
+
+        if (session && this.renderer.xr.isPresenting) {
+            this.handleXRInput(dt);
+        } else {
+            this.player.updateMovement(this.input.keys, dt);
+        }
+
         this.updateProximity();
         this.updateTimer(dt);
+    }
+
+    handleXRInput(dt) {
+        const session = this.renderer.xr.getSession();
+        if (!session) return;
+
+        let moveX = 0;
+        let moveZ = 0;
+        let tuneX = 0;
+
+        for (const source of session.inputSources) {
+            if (source.gamepad) {
+                const axes = source.gamepad.axes;
+                // Standard mapping: thumbstick is usually axes[2] and axes[3]
+                // If not present, fallback to [0] and [1]
+                const x = axes.length >= 3 ? axes[2] : (axes[0] || 0);
+                const y = axes.length >= 4 ? axes[3] : (axes[1] || 0);
+
+                // Deadzone
+                if (Math.abs(x) > 0.1) {
+                    if (this.player.isTuning) tuneX += x;
+                    else moveX += x;
+                }
+                if (Math.abs(y) > 0.1 && !this.player.isTuning) {
+                    moveZ += y;
+                }
+            }
+        }
+
+        if (this.player.isTuning && this.activeRadio) {
+            // Tune with the thumbstick
+            if (Math.abs(tuneX) > 0.05) {
+                this.handleScroll(tuneX * 0.8);
+            }
+        } else if (!this.player.isTuning && !this.keypadActive) {
+            // Apply controller movement (only if not using UI)
+            const euler = new THREE.Euler(0, 0, 0, 'YXZ');
+            euler.setFromQuaternion(this.camera.quaternion);
+
+            const fwd = new THREE.Vector3(0, 0, -1).applyEuler(new THREE.Euler(0, euler.y, 0));
+            const right = new THREE.Vector3(1, 0, 0).applyEuler(new THREE.Euler(0, euler.y, 0));
+
+            const newPos = this.player.rig.position.clone();
+            // -moveZ handles the fact that pushing thumbstick forward gives -1 Y value. 
+            newPos.addScaledVector(fwd, -moveZ * this.player.speed);
+            newPos.addScaledVector(right, moveX * this.player.speed);
+
+            const testXOnly = this.player.rig.position.clone();
+            testXOnly.x = newPos.x;
+            const testZOnly = this.player.rig.position.clone();
+            testZOnly.z = newPos.z;
+
+            // Simple Collision Pass
+            if (!this.checkCollision(testXOnly, this.player.collisionRadius)) {
+                this.player.rig.position.x = newPos.x;
+            }
+            if (!this.checkCollision(testZOnly, this.player.collisionRadius)) {
+                this.player.rig.position.z = newPos.z;
+            }
+
+            const isMoving = Math.abs(moveX) > 0.1 || Math.abs(moveZ) > 0.1;
+            this.player.footsteps.update(isMoving, dt);
+        }
     }
 
     updateProximity() {
@@ -884,24 +974,22 @@ class Game {
     }
 
     checkCollision(pos, radius) {
-        // Check wall boundaries (room is 18x18, centered at 0,0, so bounds are -9 to 9)
-        const roomBounds = 8.7; // slightly less than 9 to keep player away from walls
+        const roomBounds = 8.7;
         if (Math.abs(pos.x) + radius > roomBounds || Math.abs(pos.z) + radius > roomBounds) {
-            return true; // collision detected
+            return true;
         }
 
-        // Check table collisions
-        const tableRadius = 0.6; // collision radius for tables
+        const tableRadius = 0.6;
         for (const tablePos of this.tablePositions) {
             const dist = Math.sqrt(
                 Math.pow(pos.x - tablePos.x, 2) + Math.pow(pos.z - tablePos.z, 2)
             );
             if (dist < radius + tableRadius) {
-                return true; // collision detected
+                return true;
             }
         }
 
-        return false; // no collision
+        return false;
     }
 
     _generateCode() {
@@ -916,7 +1004,6 @@ class Game {
     }
 
     assignCodeNumbersToRadios() {
-        // Pick 3 distinct random radios from all 5 to carry the code parts
         const indices = [0, 1, 2, 3, 4];
         for (let i = indices.length - 1; i > 0; i--) {
             const j = Math.floor(Math.random() * (i + 1));
@@ -926,7 +1013,7 @@ class Game {
 
         chosen.forEach((radioIdx, slot) => {
             this.radios[radioIdx].assignedNumber   = this.codeParts[slot];
-            this.radios[radioIdx].assignedPosition = slot + 1; // 1-based position label
+            this.radios[radioIdx].assignedPosition = slot + 1;
         });
     }
 }
