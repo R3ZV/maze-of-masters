@@ -3,50 +3,89 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { VRButton } from 'three/addons/webxr/VRButton.js';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 
-class UIManager {
-    constructor() {
-        const hint = '<div style="font-size:.9rem;color:#aaa;margin-top:32px;letter-spacing:.15em">PRESS <span style="color:#fff">R</span> TO RETRY &nbsp;·&nbsp; <span style="color:#fff">L</span> FOR LOBBY</div>';
-        this.winScreen  = this.createOverlay('#000000', '#50C878', 'You escaped the dragon lair,<br>without destroying the equipment!' + hint);
-        this.loseScreen = this.createOverlay('#220000', '#FF4444', 'THE DRAGON SPOTTED YOU!<br>Game Over.' + hint);
-        this.hud = document.createElement('div');
-        this.hud.style.position = 'absolute';
-        this.hud.style.top = '20px'; this.hud.style.width = '100vw';
-        this.hud.style.color = 'white'; this.hud.style.fontSize = '2rem';
-        this.hud.style.fontFamily = 'Arial, sans-serif'; this.hud.style.textAlign = 'center';
-        this.hud.style.textShadow = '2px 2px 4px #000000';
-        this.hud.innerHTML = 'Safe... for now.';
-        document.body.appendChild(this.hud);
-    }
+class WebGLUI {
+    constructor(camera) {
+        this.camera = camera;
 
-    createOverlay(bgColor, textColor, text) {
-        const div = document.createElement('div');
-        div.style.position = 'absolute';
-        div.style.top = '0'; div.style.left = '0';
-        div.style.width = '100vw'; div.style.height = '100vh';
-        div.style.backgroundColor = bgColor; div.style.color = textColor;
-        div.style.display = 'none'; div.style.flexDirection = 'column';
-        div.style.alignItems = 'center'; div.style.justifyContent = 'center';
-        div.style.fontSize = '3rem';
-        div.style.fontFamily = 'Arial, sans-serif'; div.style.textAlign = 'center';
-        div.innerHTML = text;
-        document.body.appendChild(div);
-        return div;
+        this.hudCanvas = document.createElement('canvas');
+        this.hudCanvas.width = 600; this.hudCanvas.height = 128;
+        this.hudCtx = this.hudCanvas.getContext('2d');
+        this.hudTex = new THREE.CanvasTexture(this.hudCanvas);
+
+        const hudMat = new THREE.MeshBasicMaterial({ map: this.hudTex, transparent: true, depthTest: false });
+        this.hudMesh = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 0.32), hudMat);
+        this.hudMesh.position.set(0, 0.5, -1.5);
+        this.hudMesh.renderOrder = 999;
+        this.camera.add(this.hudMesh);
+
+        this.menuCanvas = document.createElement('canvas');
+        this.menuCanvas.width = 1024; this.menuCanvas.height = 512;
+        this.menuCtx = this.menuCanvas.getContext('2d');
+        this.menuTex = new THREE.CanvasTexture(this.menuCanvas);
+
+        const menuMat = new THREE.MeshBasicMaterial({ map: this.menuTex, transparent: true, depthTest: false });
+        this.menuMesh = new THREE.Mesh(new THREE.PlaneGeometry(2.5, 1.25), menuMat);
+        this.menuMesh.position.set(0, 0, -1.6);
+        this.menuMesh.renderOrder = 1000;
+        this.camera.add(this.menuMesh);
+
+        this.menuMesh.visible = false;
+        this.updateHUD("Safe... for now.", "white");
     }
 
     updateHUD(text, color) {
-        this.hud.innerHTML = text;
-        this.hud.style.color = color;
+        const ctx = this.hudCtx;
+        ctx.clearRect(0, 0, 600, 128);
+
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+        ctx.roundRect(20, 20, 560, 88, 15);
+        ctx.fill();
+
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = color;
+        ctx.font = 'bold 32px Arial';
+
+        ctx.shadowColor = 'black';
+        ctx.shadowBlur = 4;
+        ctx.fillText(text, 300, 64);
+
+        this.hudTex.needsUpdate = true;
     }
 
-    showWin() {
-        this.hud.style.display = 'none';
-        this.winScreen.style.display = 'flex';
+    showScreen(bgColor, textColor, title, subtitle) {
+        this.hudMesh.visible = false;
+        this.menuMesh.visible = true;
+
+        const ctx = this.menuCtx;
+        ctx.clearRect(0, 0, 1024, 512);
+
+        ctx.fillStyle = bgColor;
+        ctx.fillRect(0, 0, 1024, 512);
+
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.shadowColor = 'black';
+        ctx.shadowBlur = 8;
+
+        ctx.fillStyle = textColor;
+        ctx.font = 'bold 60px Arial';
+        ctx.fillText(title, 512, 180);
+
+        ctx.fillStyle = 'white';
+        ctx.font = '36px Arial';
+        ctx.fillText(subtitle, 512, 260);
+
+        ctx.fillStyle = '#aaaaaa';
+        ctx.font = '24px Arial';
+        ctx.fillText("VR: Pull Trigger to Retry  |  PC: Press R to Retry", 512, 400);
+
+        this.menuTex.needsUpdate = true;
     }
 
-    showLose() {
-        this.hud.style.display = 'none';
-        this.loseScreen.style.display = 'flex';
-    }
+    showWin() { this.showScreen('rgba(0, 30, 0, 0.9)', '#50C878', "YOU ESCAPED!", "Without destroying the equipment."); }
+    showLose() { this.showScreen('rgba(40, 0, 0, 0.9)', '#FF4444', "THE DRAGON SPOTTED YOU!", "Game Over."); }
+    hideMenu() { this.menuMesh.visible = false; this.hudMesh.visible = true; }
 }
 
 class InputManager {
@@ -82,7 +121,7 @@ class FootstepAudio {
         const loader = new THREE.AudioLoader();
         for (let i = 1; i <= 6; i++) {
             const audio = new THREE.Audio(this.listener);
-            loader.load(`assets/foot_${i}.wav`, buf => audio.setBuffer(buf));
+            loader.load(`assets/foot_${i}.wav`, buf => audio.setBuffer(buf), undefined, () => {});
             this.sounds.push(audio);
         }
     }
@@ -117,10 +156,9 @@ class Player {
         this.camera = camera;
 
         this.standingHeight = 1.6;
-        this.sittingHeight = 1.0;
         this.camera.position.y = this.standingHeight;
 
-        this.speed = 0.05;
+        this.speed = 3.5; 
         this.currentChairPos = new THREE.Vector3();
         this.footsteps = new FootstepAudio(camera);
     }
@@ -128,35 +166,49 @@ class Player {
     sitDown(chairWorldPos) {
         this.state.onChair = true;
         this.currentChairPos.copy(chairWorldPos);
-        this.rig.position.set(chairWorldPos.x, 0, chairWorldPos.z);
-        this.camera.position.y = this.sittingHeight;
+        this.rig.position.set(chairWorldPos.x, -0.6, chairWorldPos.z); 
     }
 
     standUp() {
         this.state.onChair = false;
         const stepOutDistance = this.currentChairPos.x > 0 ? -2 : 2;
         this.rig.position.set(this.currentChairPos.x + stepOutDistance, 0, this.currentChairPos.z);
-        this.camera.position.y = this.standingHeight;
     }
 
-    updateMovement(keys, delta) {
+    updateMovement(keys, renderer, delta) {
         if (this.state.onChair) { this.footsteps.update(false, delta); return; }
+
+        let inX = 0, inY = 0;
+
+        if (keys.a) inX = -1; if (keys.d) inX = 1;
+        if (keys.w) inY =  1; if (keys.s) inY = -1;
+
+        const session = renderer.xr.getSession();
+        if (session) {
+            for (const source of session.inputSources) {
+                if (source.gamepad && source.gamepad.axes.length >= 4) {
+                    const ax = source.gamepad.axes[2];
+                    const ay = source.gamepad.axes[3];
+                    if (Math.abs(ax) > 0.1) inX = ax;
+                    if (Math.abs(ay) > 0.1) inY = -ay;
+                }
+            }
+        }
 
         const euler = new THREE.Euler(0, 0, 0, 'YXZ');
         euler.setFromQuaternion(this.camera.quaternion);
         const direction = new THREE.Vector3(0, 0, -1).applyEuler(new THREE.Euler(0, euler.y, 0));
         const right = new THREE.Vector3(1, 0, 0).applyEuler(new THREE.Euler(0, euler.y, 0));
 
-        if (keys.w) this.rig.position.addScaledVector(direction, this.speed);
-        if (keys.s) this.rig.position.addScaledVector(direction, -this.speed);
-        if (keys.a) this.rig.position.addScaledVector(right, -this.speed);
-        if (keys.d) this.rig.position.addScaledVector(right, this.speed);
+        const moveSpeed = this.speed * delta;
+        if (inY !== 0) this.rig.position.addScaledVector(direction, inY * moveSpeed);
+        if (inX !== 0) this.rig.position.addScaledVector(right, inX * moveSpeed);
 
         this.rig.position.x = Math.max(-24, Math.min(24, this.rig.position.x));
         this.rig.position.z = Math.max(-34, Math.min(34, this.rig.position.z));
         this.rig.position.y = 0;
 
-        const isMoving = keys.w || keys.s || keys.a || keys.d;
+        const isMoving = inX !== 0 || inY !== 0;
         this.footsteps.update(isMoving, delta);
     }
 }
@@ -164,7 +216,6 @@ class Player {
 class Game {
     constructor() {
         this.clock = new THREE.Clock();
-        this.ui = new UIManager();
         this.input = new InputManager(() => this.handleInteraction());
 
         this.state = 'PLAYING';
@@ -190,6 +241,7 @@ class Game {
         this.initScene();
         this.buildWorld();
         this.loadAssets();
+        this.initVRControllers();
 
         window.addEventListener('keydown', e => {
             const k = e.key.toLowerCase();
@@ -229,6 +281,8 @@ class Game {
         this.player = new Player(this.camera);
         this.scene.add(this.player.rig);
 
+        this.ui = new WebGLUI(this.camera);
+
         const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
         this.scene.add(ambientLight);
 
@@ -238,26 +292,42 @@ class Game {
 
         this.controls = new PointerLockControls(this.camera, document.body);
         document.body.addEventListener('click', () => {
-            if (this.state === 'PLAYING') {
+            if (this.state === 'PLAYING' && !this.renderer.xr.isPresenting) {
                 this.controls.lock();
                 if (!this.musicSrc) this._playMusic();
             }
         });
     }
 
+    initVRControllers() {
+        const onSelect = () => {
+            if (this.state === 'WON' || this.state === 'LOST') {
+                this.restart();
+            } else {
+                this.handleInteraction();
+            }
+        };
+
+        for (let i = 0; i < 2; i++) {
+            const controller = this.renderer.xr.getController(i);
+            controller.addEventListener('selectstart', onSelect);
+            this.player.rig.add(controller);
+        }
+    }
+
     createTextSprite(message) {
         const canvas = document.createElement('canvas');
-        canvas.width = 256; canvas.height = 128;
+        canvas.width = 600; canvas.height = 128;
         const ctx = canvas.getContext('2d');
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
-        ctx.roundRect(10, 20, 236, 88, 15);
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+        ctx.roundRect(10, 20, 580, 88, 15);
         ctx.fill();
         ctx.font = 'bold 36px Arial'; ctx.fillStyle = 'white';
         ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
         ctx.fillText(message, canvas.width / 2, canvas.height / 2);
         const texture = new THREE.CanvasTexture(canvas);
         const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true }));
-        sprite.scale.set(1.5, 0.75, 1);
+        sprite.scale.set(3.5, 0.75, 1);
         return sprite;
     }
 
@@ -274,15 +344,15 @@ class Game {
         this.door.position.set(24.9, 1.5, -15); 
         this.scene.add(this.door);
 
-        this.doorText = this.createTextSprite("[E]: Exit");
+        this.doorText = this.createTextSprite("[E / Trigger]: Exit");
         this.doorText.position.set(24.7, 1.5, -15);
         this.doorText.visible = false; 
         this.scene.add(this.doorText);
-
     }
 
     loadAssets() {
         const gltfLoader = new GLTFLoader();
+
         gltfLoader.load('assets/scientist.glb', (gltf) => {
             this.scientist = gltf.scene;
             this.scientist.position.set(0, 0, -30);
@@ -318,7 +388,7 @@ class Game {
             const chair = baseChairModel.clone();
             chair.position.set(offsetX, 0, 0.8);
 
-            const text = this.createTextSprite("[E]: Sit/Stand");
+            const text = this.createTextSprite("[E / Trigger]: Sit/Stand");
             text.position.set(0, 1.2, 0);
             text.visible = false;
             chair.add(text);
@@ -334,6 +404,8 @@ class Game {
 
     handleInteraction() {
         if (this.state !== 'PLAYING') return;
+
+        if (!this.musicSrc) this._playMusic();
 
         if (this.player.state.onChair) {
             this.player.standUp();
@@ -367,7 +439,9 @@ class Game {
     tick() {
         const dt = this.clock.getDelta();
 
-        if (this.state === 'PLAYING' && this.controls.isLocked) {
+        const isActive = this.controls.isLocked || this.renderer.xr.isPresenting;
+
+        if (this.state === 'PLAYING' && isActive) {
             this.update(dt);
         }
 
@@ -375,39 +449,11 @@ class Game {
             this.updateLosingSequence(dt);
         }
 
-        this.render();
-    }
-
-    updateLosingSequence(dt) {
-        if (!this.scientist) {
-            this.state = 'LOST';
-            this.controls.unlock();
-            this.ui.showLose();
-            return;
-        }
-
-        const playerPos = this.player.rig.position;
-        const npcPos = this.scientist.position;
-        const dx = playerPos.x - npcPos.x;
-        const dz = playerPos.z - npcPos.z;
-        const dist = Math.sqrt(dx * dx + dz * dz);
-
-        this.scientist.lookAt(playerPos.x, npcPos.y, playerPos.z);
-
-        if (dist < 1.5) {
-            this.state = 'LOST';
-            this.controls.unlock();
-            this.ui.showLose();
-            return;
-        }
-
-        const speed = 20.0;
-        npcPos.x += (dx / dist) * speed * dt;
-        npcPos.z += (dz / dist) * speed * dt;
+        this.renderer.render(this.scene, this.camera);
     }
 
     update(dt) {
-        this.player.updateMovement(this.input.keys, dt);
+        this.player.updateMovement(this.input.keys, this.renderer, dt);
         this.updateUIProximity();
         this.updateDragonLogic(dt);
     }
@@ -417,11 +463,13 @@ class Game {
         const isSitting = this.player.state.onChair;
 
         this.doorText.visible = (pPos.distanceTo(this.door.position) < 3.0 && !isSitting);
+        this.doorText.lookAt(this.camera.position);
 
         for (let chair of this.chairsList) {
             let wp = new THREE.Vector3();
             chair.getWorldPosition(wp);
             chair.userData.sprite.visible = (pPos.distanceTo(wp) < 2.5 && !isSitting);
+            chair.userData.sprite.lookAt(this.camera.position);
         }
     }
 
@@ -455,8 +503,32 @@ class Game {
         }
     }
 
-    render() {
-        this.renderer.render(this.scene, this.camera);
+    updateLosingSequence(dt) {
+        if (!this.scientist) {
+            this.state = 'LOST';
+            this.controls.unlock();
+            this.ui.showLose();
+            return;
+        }
+
+        const playerPos = this.player.rig.position;
+        const npcPos = this.scientist.position;
+        const dx = playerPos.x - npcPos.x;
+        const dz = playerPos.z - npcPos.z;
+        const dist = Math.sqrt(dx * dx + dz * dz);
+
+        this.scientist.lookAt(playerPos.x, npcPos.y, playerPos.z);
+
+        if (dist < 1.5) {
+            this.state = 'LOST';
+            this.controls.unlock();
+            this.ui.showLose();
+            return;
+        }
+
+        const speed = 20.0;
+        npcPos.x += (dx / dist) * speed * dt;
+        npcPos.z += (dz / dist) * speed * dt;
     }
 
     async _playMusic() {
@@ -467,7 +539,7 @@ class Game {
             this.musicSrc.buffer = this.musicBuf;
             this.musicSrc.loop = true;
             const gain = this.musicCtx.createGain();
-            gain.gain.value = 0.4; // ← change volume here (0.0 – 1.0)
+            gain.gain.value = 0.4;
             this.musicSrc.connect(gain).connect(this.musicCtx.destination);
             this.musicSrc.start();
         }
@@ -494,19 +566,22 @@ class Game {
     }
 
     restart() {
-        this.ui.winScreen.style.display  = 'none';
-        this.ui.loseScreen.style.display = 'none';
-        this.ui.hud.style.display        = '';
+        this.ui.hideMenu();
         this.player.rig.position.set(-15, 0, 30);
-        this.player.state.onChair        = false;
-        this.player.camera.position.y    = this.player.standingHeight;
-        this.cycleTime    = 0;
+        this.player.state.onChair = false;
+
+        this.cycleTime = 0;
         this.safeDuration = this.getRandomSafeTime();
+
         this.scene.background.setHex(0xD3D3D3);
         this.scene.fog.color.setHex(0xD3D3D3);
+
         if (this.scientist) this.scientist.position.set(0, 0, -30);
+
         this.state = 'PLAYING';
         this._playMusic();
+
+        if (!this.renderer.xr.isPresenting) this.controls.lock();
     }
 }
 
