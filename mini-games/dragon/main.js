@@ -221,6 +221,7 @@ class Game {
         this.state = 'PLAYING';
         this.cycleTime = 0;
         this.lookDuration = 2.0;
+        this.dragonLooking = false;
         this.safeDuration = this.getRandomSafeTime();
 
         this.chairsList = [];
@@ -486,6 +487,7 @@ class Game {
         if (this.cycleTime > totalCycle) {
             this.cycleTime = 0;
             this.safeDuration = this.getRandomSafeTime();
+            this.dragonLooking = false;
         }
 
         if (this.cycleTime < this.safeDuration) {
@@ -499,6 +501,17 @@ class Game {
                 this.ui.updateHUD("Safe... for now.", 'white');
             }
         } else {
+            if (!this.dragonLooking) {
+                this.dragonLooking = true;
+                if (this.spottedBuf) {
+                    const src = this.musicCtx.createBufferSource();
+                    src.buffer = this.spottedBuf;
+                    const gain = this.musicCtx.createGain();
+                    gain.gain.value = 0.5;
+                    src.connect(gain).connect(this.musicCtx.destination);
+                    src.start();
+                }
+            }
             this.scene.background.setHex(0x8B0000);
             this.scene.fog.color.setHex(0x8B0000);
             this.ui.updateHUD("DRAGON IS LOOKING! HIDE!", '#FF0000');
@@ -563,14 +576,6 @@ class Game {
         if (result === 'LOST') {
             this.state = 'LOSING';
             this._stopMusic();
-            if (this.spottedBuf) {
-                const src = this.musicCtx.createBufferSource();
-                src.buffer = this.spottedBuf;
-                const gain = this.musicCtx.createGain();
-                gain.gain.value = 0.25;
-                src.connect(gain).connect(this.musicCtx.destination);
-                src.start();
-            }
             return;
         }
         this.state = result;
@@ -586,6 +591,7 @@ class Game {
 
         this.cycleTime = 0;
         this.safeDuration = this.getRandomSafeTime();
+        this.dragonLooking = false;
 
         this.scene.background.setHex(0xD3D3D3);
         this.scene.fog.color.setHex(0xD3D3D3);
