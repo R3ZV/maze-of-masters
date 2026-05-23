@@ -1,22 +1,38 @@
 import * as THREE from 'three';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
+import { VRButton } from 'three/addons/webxr/VRButton.js';
 import {
     ROUND_CONFIGS, SYMBOL_NAMES, COLOR_TYPES,
     SYMBOL_SOUNDS, RANDOM_MATCH_SOUNDS,
     START_OF_ROUND_SOUNDS, END_OF_ROUND_SOUNDS,
 } from './config.js';
 
-class UIManager {
-    constructor() {
-        this.loseScreen = this.createOverlay('#220000', '#FF4444', 'OUT OF LIVES.<br><div style="font-size:.9rem;color:#aaa;margin-top:32px;letter-spacing:.15em">PRESS <span style="color:#fff">R</span> TO RETRY &nbsp;·&nbsp; <span style="color:#fff">L</span> FOR LOBBY</div>');
-        this.winScreen  = this.createOverlay('#002200', '#44FF44', 'YOU WIN!<br><div style="font-size:.9rem;color:#aaa;margin-top:32px;letter-spacing:.15em">PRESS <span style="color:#fff">R</span> TO RETRY &nbsp;·&nbsp; <span style="color:#fff">L</span> FOR LOBBY</div>');
-        this.hud = document.createElement('div');
-        this.hud.style.position = 'absolute';
-        this.hud.style.top = '20px'; this.hud.style.width = '100vw';
-        this.hud.style.color = 'white'; this.hud.style.fontSize = '2rem';
-        this.hud.style.fontFamily = 'Arial, sans-serif'; this.hud.style.textAlign = 'center';
-        this.hud.style.textShadow = '2px 2px 4px #000000';
-        document.body.appendChild(this.hud);
+class WebGLUI {
+    constructor(camera) {
+        this.camera = camera;
+
+        this.hudCanvas = document.createElement('canvas');
+        this.hudCanvas.width = 1024; this.hudCanvas.height = 256;
+        this.hudCtx = this.hudCanvas.getContext('2d');
+        this.hudTex = new THREE.CanvasTexture(this.hudCanvas);
+
+        const hudMat = new THREE.MeshBasicMaterial({ map: this.hudTex, transparent: true, depthTest: false });
+        this.hudMesh = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 0.375), hudMat);
+        this.hudMesh.position.set(0, 0.8, -2);
+        this.hudMesh.renderOrder = 999;
+        this.camera.add(this.hudMesh);
+
+        this.menuCanvas = document.createElement('canvas');
+        this.menuCanvas.width = 1024; this.menuCanvas.height = 512;
+        this.menuCtx = this.menuCanvas.getContext('2d');
+        this.menuTex = new THREE.CanvasTexture(this.menuCanvas);
+
+        const menuMat = new THREE.MeshBasicMaterial({ map: this.menuTex, transparent: true, depthTest: false });
+        this.menuMesh = new THREE.Mesh(new THREE.PlaneGeometry(2.5, 1.25), menuMat);
+        this.menuMesh.position.set(0, 0, -1.8);
+        this.menuMesh.renderOrder = 1000;
+        this.camera.add(this.menuMesh);
+        this.menuMesh.visible = false;
 
         this.crosshair = document.createElement('div');
         this.crosshair.style.position = 'absolute';
@@ -27,42 +43,96 @@ class UIManager {
         this.crosshair.style.transform = 'translate(-50%, -50%)';
         this.crosshair.style.pointerEvents = 'none';
         document.body.appendChild(this.crosshair);
-    }
 
-    createOverlay(bgColor, textColor, text) {
-        const div = document.createElement('div');
-        div.style.position = 'absolute';
-        div.style.top = '0'; div.style.left = '0';
-        div.style.width = '100vw'; div.style.height = '100vh';
-        div.style.backgroundColor = bgColor; div.style.color = textColor;
-        div.style.display = 'none'; div.style.flexDirection = 'column';
-        div.style.alignItems = 'center'; div.style.justifyContent = 'center';
-        div.style.fontSize = '3rem';
-        div.style.fontFamily = 'Arial, sans-serif'; div.style.textAlign = 'center';
-        div.innerHTML = text;
-        document.body.appendChild(div);
-        return div;
+        this.owlImg = new Image();
+        this.owlImg.src = '/mini-games/cards/prolog_owl.svg';
+        this.owlImgLoaded = false;
+        this.owlImg.onload = () => { this.owlImgLoaded = true; this.lastStateStr = null; };
+
+        this.lastStateStr = "";
     }
 
     updateHUD(status, lives, maxLives) {
-        const src = '/mini-games/cards/prolog_owl.svg';
-        const base = `width:2rem;height:2rem;vertical-align:middle;margin:0 2px;`;
-        const activeOwl = `<img src="${src}" style="${base}filter:brightness(0) saturate(100%) invert(15%) sepia(93%) saturate(6397%) hue-rotate(3deg) brightness(94%) contrast(119%);">`;
-        const emptyOwl  = `<img src="${src}" style="${base}filter:brightness(0) opacity(0.25);">`;
-        const owls = activeOwl.repeat(lives) + emptyOwl.repeat(maxLives - lives);
-        this.hud.innerHTML = `${status}<br><span style="font-size:1.5rem;">Lives: ${owls}</span>`;
+        const stateStr = status + lives + maxLives;
+        if (this.lastStateStr === stateStr && this.owlImgLoaded) return;
+        this.lastStateStr = stateStr;
+
+        const ctx = this.hudCtx;
+        ctx.clearRect(0, 0, 1024, 256);
+
+        // Background Pill
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
+        ctx.roundRect(112, 20, 800, 180, 30);
+        ctx.fill();
+
+        // Text
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = 'white';
+        ctx.font = 'bold 45px Arial';
+        ctx.shadowColor = 'black';
+        ctx.shadowBlur = 6;
+        ctx.fillText(status, 512, 75);
+
+        ctx.font = '35px Arial';
+        ctx.fillText("Lives: ", 400, 150);
+
+        // Draw Owls
+        const startX = 460;
+        for(let i = 0; i < maxLives; i++) {
+            if (this.owlImgLoaded) {
+                ctx.globalAlpha = (i < lives) ? 1.0 : 0.25;
+                if (i < lives) {
+                    ctx.filter = 'invert(15%) sepia(93%) saturate(6397%) hue-rotate(3deg) brightness(94%) contrast(119%)';
+                } else {
+                    ctx.filter = 'none';
+                }
+                ctx.drawImage(this.owlImg, startX + i * 55, 125, 45, 45);
+                ctx.filter = 'none';
+                ctx.globalAlpha = 1.0;
+            } else {
+                ctx.fillStyle = (i < lives) ? '#44ff44' : '#555555';
+                ctx.beginPath();
+                ctx.arc(startX + 25 + i * 55, 145, 18, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        this.hudTex.needsUpdate = true;
     }
 
-    showLose() {
-        this.hud.style.display = 'none';
+    showScreen(bgColor, textColor, title) {
+        this.hudMesh.visible = false;
         this.crosshair.style.display = 'none';
-        this.loseScreen.style.display = 'flex';
+        this.menuMesh.visible = true;
+
+        const ctx = this.menuCtx;
+        ctx.clearRect(0, 0, 1024, 512);
+        ctx.fillStyle = bgColor;
+        ctx.fillRect(0, 0, 1024, 512);
+
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = textColor;
+        ctx.font = 'bold 80px Arial';
+        ctx.shadowColor = 'black';
+        ctx.shadowBlur = 8;
+        ctx.fillText(title, 512, 200);
+
+        ctx.fillStyle = '#aaaaaa';
+        ctx.font = '32px Arial';
+        ctx.fillText("VR: Pull Trigger to Retry", 512, 340);
+        ctx.fillText("PC: Press R to Retry  |  L for Lobby", 512, 400);
+
+        this.menuTex.needsUpdate = true;
     }
 
-    showWin() {
-        this.hud.style.display = 'none';
-        this.crosshair.style.display = 'none';
-        this.winScreen.style.display = 'flex';
+    showLose() { this.showScreen('rgba(40, 0, 0, 0.95)', '#FF4444', "OUT OF LIVES"); }
+    showWin() { this.showScreen('rgba(0, 40, 0, 0.95)', '#44FF44', "YOU WIN!"); }
+    hideMenu() { 
+        this.menuMesh.visible = false; 
+        this.hudMesh.visible = true; 
+        this.lastStateStr = null; 
     }
 }
 
@@ -116,7 +186,6 @@ class Card {
 class Game {
     constructor() {
         this.clock = new THREE.Clock();
-        this.ui = new UIManager();
 
         this.roundIndex = 0;
         this.memorizeDuration = 5.0;
@@ -132,15 +201,13 @@ class Game {
 
         this.initRenderer();
         this.initScene();
+        this.initVRControllers();
         this.buildWorld();
 
         window.addEventListener('mousedown', () => this.handleInteraction());
         window.addEventListener('keydown', (e) => {
-            if (e.key.toLowerCase() === 'e') this.handleInteraction();
-        });
-
-        window.addEventListener('keydown', e => {
             const k = e.key.toLowerCase();
+            if (k === 'e') this.handleInteraction();
             if (k === 'r' && (this.state === 'LOST' || this.state === 'WON')) this.restart();
             if (k === 'l' && (this.state === 'LOST' || this.state === 'WON')) window.location.href = '/lobby';
         });
@@ -172,7 +239,9 @@ class Game {
     initRenderer() {
         this.renderer = new THREE.WebGLRenderer({ antialias: true });
         this.renderer.setSize(window.innerWidth, window.innerHeight);
+        this.renderer.xr.enabled = true; // ENABLE VR
         document.body.appendChild(this.renderer.domElement);
+        document.body.appendChild(VRButton.createButton(this.renderer));
 
         window.addEventListener('resize', () => {
             this.camera.aspect = window.innerWidth / window.innerHeight;
@@ -186,6 +255,8 @@ class Game {
         this.scene.background = new THREE.Color(0x202030);
         this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 100);
 
+        this.ui = new WebGLUI(this.camera);
+
         const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
         this.scene.add(ambientLight);
 
@@ -194,14 +265,16 @@ class Game {
         this.scene.add(pointLight);
 
         this.rig = new THREE.Group();
-        this.rig.position.set(0, 4.5, 1.5);
-        this.rig.add(this.camera);
+        this.rig.position.set(0, 0, 1.8);
         this.scene.add(this.rig);
-        this.camera.lookAt(0, 0, 0);
+        this.rig.add(this.camera);
+
+        this.camera.position.set(0, 4.5, 0);
+        this.camera.lookAt(0, 1.05, -1.8); 
 
         this.controls = new PointerLockControls(this.camera, document.body);
         document.body.addEventListener('click', () => {
-            if (this.state !== 'LOST') this.controls.lock();
+            if (this.state !== 'LOST' && !this.renderer.xr.isPresenting) this.controls.lock();
         });
         this.controls.addEventListener('lock', () => {
             if (this.pendingStartSound) {
@@ -209,7 +282,33 @@ class Game {
                 this.pendingStartSound = null;
             }
         });
+
         this.raycaster = new THREE.Raycaster();
+    }
+
+    initVRControllers() {
+        this.controllers = [];
+        const onSelect = () => {
+            if (this.state === 'LOST' || this.state === 'WON') {
+                this.restart();
+            } else {
+                this.handleInteraction();
+            }
+        };
+
+        for (let i = 0; i < 2; i++) {
+            const controller = this.renderer.xr.getController(i);
+            controller.addEventListener('selectstart', onSelect);
+            this.rig.add(controller);
+            this.controllers.push(controller);
+
+            // Draw laser pointers on the controllers
+            const geometry = new THREE.BufferGeometry().setFromPoints([
+                new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, -5)
+            ]);
+            const line = new THREE.Line(geometry, new THREE.LineBasicMaterial({ color: 0xffffff }));
+            controller.add(line);
+        }
     }
 
     buildWorld() {
@@ -241,8 +340,7 @@ class Game {
     buildCardTexture(colorHex, svgName) {
         const size = 256;
         const canvas = document.createElement('canvas');
-        canvas.width = size;
-        canvas.height = size;
+        canvas.width = size; canvas.height = size;
         const ctx = canvas.getContext('2d');
 
         const hex = '#' + colorHex.toString(16).padStart(6, '0');
@@ -250,7 +348,6 @@ class Game {
         ctx.fillRect(0, 0, size, size);
 
         const texture = new THREE.CanvasTexture(canvas);
-
         const img = new Image();
         img.onload = () => {
             ctx.drawImage(img, 16, 16, size - 32, size - 32);
@@ -263,7 +360,6 @@ class Game {
 
     buildCards() {
         const config = ROUND_CONFIGS[this.roundIndex];
-
         const shuffledSymbols = [...SYMBOL_NAMES].sort(() => Math.random() - 0.5);
         const chosenSymbols = shuffledSymbols.slice(0, config.pairs);
         const colors = COLOR_TYPES.slice(0, config.pairs);
@@ -285,7 +381,10 @@ class Game {
     }
 
     handleInteraction() {
-        if (this.state !== 'PLAYING' || !this.controls.isLocked) return;
+        const isVR = this.renderer.xr.isPresenting;
+
+        if (this.state !== 'PLAYING') return;
+        if (!isVR && !this.controls.isLocked) return; // Prevent PC clicks while unlocked
         if (!this.hoveredCard || this.hoveredCard.isFaceUp || this.hoveredCard.isMatched) return;
 
         this.hoveredCard.flipUp();
@@ -359,22 +458,44 @@ class Game {
     }
 
     restart() {
-        this.ui.loseScreen.style.display = 'none';
-        this.ui.winScreen.style.display  = 'none';
-        this.ui.hud.style.display        = '';
-        this.ui.crosshair.style.display  = '';
+        this.ui.hideMenu();
         this.roundIndex  = 0;
         const shuffle    = arr => [...arr].sort(() => Math.random() - 0.5);
         this.startSounds = shuffle(START_OF_ROUND_SOUNDS);
         this.endSounds   = shuffle(END_OF_ROUND_SOUNDS);
         this.startRound();
+
+        if (!this.renderer.xr.isPresenting) this.controls.lock();
     }
 
     tick() {
         const dt = this.clock.getDelta();
+        const isVR = this.renderer.xr.isPresenting;
 
-        this.raycaster.setFromCamera(new THREE.Vector2(0, 0), this.camera);
-        const intersects = this.raycaster.intersectObjects(this.cards.map(c => c.mesh));
+        if (isVR) {
+            this.ui.crosshair.style.display = 'none';
+        } else {
+            this.ui.crosshair.style.display = (this.state === 'PLAYING' && this.controls.isLocked) ? 'block' : 'none';
+        }
+
+        let intersects = [];
+        if (isVR && this.controllers) {
+            for (let ctrl of this.controllers) {
+                const tempMatrix = new THREE.Matrix4();
+                tempMatrix.identity().extractRotation(ctrl.matrixWorld);
+                this.raycaster.ray.origin.setFromMatrixPosition(ctrl.matrixWorld);
+                this.raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tempMatrix);
+
+                const hits = this.raycaster.intersectObjects(this.cards.map(c => c.mesh));
+                if (hits.length > 0) {
+                    intersects = hits;
+                    break;
+                }
+            }
+        } else {
+            this.raycaster.setFromCamera(new THREE.Vector2(0, 0), this.camera);
+            intersects = this.raycaster.intersectObjects(this.cards.map(c => c.mesh));
+        }
 
         this.hoveredCard = null;
         if (intersects.length > 0) {
@@ -396,7 +517,7 @@ class Game {
             }
         }
         else if (this.state === 'PLAYING') {
-            this.ui.updateHUD(`Round ${roundNum} / ${ROUND_CONFIGS.length} | Pairs: ${this.pairsFound} / ${this.pairsNeeded}`, this.lives, this.maxLives);
+            this.ui.updateHUD(`Round ${roundNum} / ${ROUND_CONFIGS.length}  |  Pairs: ${this.pairsFound} / ${this.pairsNeeded}`, this.lives, this.maxLives);
         }
         else if (this.state === 'CHECKING') {
             this.ui.updateHUD(`Checking...`, this.lives, this.maxLives);
@@ -407,7 +528,7 @@ class Game {
         }
         else if (this.state === 'TRANSITION') {
             const next = this.roundIndex < ROUND_CONFIGS.length ? `Preparing Round ${this.roundIndex + 1}...` : 'You win!';
-            this.ui.updateHUD(`ROUND CLEAR!<br>${next}`, this.lives, this.maxLives);
+            this.ui.updateHUD(`ROUND CLEAR! ${next}`, this.lives, this.maxLives);
         }
 
         this.renderer.render(this.scene, this.camera);
