@@ -1,6 +1,6 @@
 # Models
 
-- Chair https://poly.pizza/m/Rlyhe93NNe
+- Chair: https://poly.pizza/m/Rlyhe93NNe
 
 - Scientist: https://sketchfab.com/3d-models/half-life-1-scientist-64bc8b22c8ac4b2e9c72018257bf2449
 
