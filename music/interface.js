@@ -25,3 +25,22 @@ export class WebPdSocket {
         }
     }
 }
+
+export class SpatialAudioSocket {
+    constructor(wsUrl) {
+        this.ws = null;
+        this.ready = false;
+        try {
+            this.ws = new WebSocket(wsUrl);
+            this.ws.onopen = () => { this.ready = true; };
+            this.ws.onclose = () => { this.ready = false; };
+            this.ws.onerror = () => { this.ready = false; };
+        } catch (e) {}
+    }
+
+    send(distances) {
+        if (this.ready && this.ws.readyState === WebSocket.OPEN) {
+            this.ws.send(JSON.stringify(distances));
+        }
+    }
+}
