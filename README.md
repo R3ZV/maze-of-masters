@@ -61,3 +61,6 @@ Open `http://localhost:8000/lobby` in a Chromium-based browser.
 WebXR requires a secure connection — tunnel the local server with `ngrok http 8000`
 and open the provided `https://` URL on a device that supports vr, such as a vr
 headset or even your phone.
+
+# Demo playthrough
+A live demo of the gameplay can be downloaded <a href="https://we.tl/t-Xzkeb6SbaWwDFwAQ">here</a>. 
